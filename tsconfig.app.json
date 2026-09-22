@@ -10,7 +10,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "@webgpu/types"],
 
     "strict": true,
     "skipLibCheck": true,

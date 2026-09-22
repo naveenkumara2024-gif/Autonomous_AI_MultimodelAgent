@@ -1,3 +1,159 @@
+/* Geist — same font used on hellobonsai.com/partners/dribbble (their whole
+   design system uses it for body/heading/badge text, per their shared CSS). */
+@import "@fontsource/geist-sans/latin-400.css";
+@import "@fontsource/geist-sans/latin-500.css";
+@import "@fontsource/geist-sans/latin-600.css";
+@import "@fontsource/geist-sans/latin-700.css";
+@import "@fontsource/geist-mono/latin-400.css";
+@import "@fontsource/geist-mono/latin-500.css";
+@import "@fontsource/geist-mono/latin-600.css";
+@import "@fontsource/geist-mono/latin-700.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * shadcn/ui "Neutral" theme, Tailwind v3 HSL-variable convention (not the
+ * newer v4/OKLCH convention shadcn's docs default to now — this repo is
+ * pinned to Tailwind v3, so this is the matching, equally-standard variant).
+ */
+@layer base {
+  :root {
+    /* --background/--card/--popover now describe the floating MAIN PANEL
+       surface (see App.tsx), not the window background — the window/app
+       background behind it is the constant --bg-app below. --card/--popover
+       are the panel's "elevated" surface (message bubbles, dropdowns),
+       tuned to match --bg-elevated. Values below are the EchoAI-reference
+       light theme. */
+    --background: 0 0% 95.9%; /* #F4F4F5 */
+    --foreground: 0 0% 3.9%; /* #0A0A0A */
+    --card: 0 0% 100%; /* #FFFFFF */
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 3.9%; /* #0A0A0A — solid black send button (light) */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 94.1%;
+    --muted-foreground: 0 0% 54.1%; /* #8A8A8A — caption-line tone */
+    --accent: 0 0% 94.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+
+    /* Session-status dots — independent of the neutral brand palette. */
+    --status-created: 0 0% 63.9%;
+    --status-idle: 142 71% 45%;
+    --status-running: 217 91% 60%;
+    --status-stopped: 38 92% 50%;
+
+    /* --- EchoAI-reference design-language tokens ------------------------
+       Theme-invariant ones (app/sidebar background, sidebar text, brand
+       accent, tooltip) live only here in :root and are never redefined in
+       .dark, so they simply keep cascading through unchanged when the
+       .dark class is added to <html> — the sidebar is a fixed dark shell
+       in both themes by design (see .sidebar-scope below). */
+    --bg-app: #111111;
+    --panel-border: transparent;
+    --bg-elevated: #ffffff;
+    --elevated-border: #ececec;
+    --square-bg: #f4f4f5;
+    --text-secondary: #bdbdbd; /* "What can I help you get done?" tone */
+
+    --brand: #d7ff3a;
+    --brand-hover: #c8f02a;
+    --brand-ring: rgba(215, 255, 58, 0.35);
+
+    --sidebar-text-faint: #6b6b6b; /* "Recent" label */
+    --sidebar-row-hover: #1c1c1c;
+    --sidebar-elevated: #1f1f1f;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+
+    --tooltip-bg: #111111;
+    --tooltip-text: #ffffff;
+  }
+
+  .dark {
+    --background: 0 0% 10.2%; /* #1A1A1A main panel */
+    --foreground: 0 0% 98%; /* #FAFAFA */
+    --card: 0 0% 14.1%; /* #242424 elevated surface */
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 14.1%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 72 100% 61.4%; /* #D7FF3A — lime send button (dark) */
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 47.8%; /* #7A7A7A — caption-line tone */
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+
+    --status-created: 0 0% 45.1%;
+    --status-idle: 142 71% 45%;
+    --status-running: 217 91% 60%;
+    --status-stopped: 38 92% 50%;
+
+    --panel-border: rgba(255, 255, 255, 0.06);
+    --bg-elevated: #242424;
+    --elevated-border: rgba(255, 255, 255, 0.06);
+    --square-bg: #2e2e2e;
+    --text-secondary: #4a4a4a;
+  }
+
+  /* The sidebar is a fixed dark shell regardless of theme (see the
+     reference design's "framed card" layout) — this locally overrides
+     the same shadcn token names the rest of the app uses, so every
+     existing Button/Input/ScrollArea/SessionRow class inside the sidebar
+     (bg-background, text-foreground, hover:bg-accent, bg-secondary,
+     border-input, ...) resolves to sidebar-correct colors automatically,
+     without needing its own parallel set of classNames. */
+  .sidebar-scope {
+    --background: 0 0% 6.7%; /* #111111 */
+    --foreground: 0 0% 89.8%; /* #E5E5E5 */
+    --card: 0 0% 6.7%;
+    --card-foreground: 0 0% 89.8%;
+    --popover: 0 0% 6.7%;
+    --popover-foreground: 0 0% 89.8%;
+    --secondary: 0 0% 12.2%; /* #1F1F1F — "New chat" button */
+    --secondary-foreground: 0 0% 89.8%;
+    --muted: 0 0% 11%;
+    --muted-foreground: 0 0% 54.1%; /* #8A8A8A */
+    --accent: 0 0% 11%; /* #1C1C1C — row hover/selected */
+    --accent-foreground: 0 0% 89.8%;
+    --border: 0 0% 8%; /* opaque approximation of rgba(255,255,255,.08) on #111 */
+    --input: 0 0% 8%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-app-bg text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* All theme/hover/focus transitions settle in 150ms, per the reference
+     design's polish pass. Tailwind's own `transition-*` utilities already
+     default to 150ms ease, so this only needs to widen which properties
+     the *default* (unqualified) `transition` utility covers, for the
+     handful of spots that animate box-shadow alongside color/border. */
+  .transition-surface {
+    transition-property: background-color, border-color, color, box-shadow;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+}

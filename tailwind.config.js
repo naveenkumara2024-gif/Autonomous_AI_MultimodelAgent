@@ -1,130 +1,99 @@
 /**
- * Tailwind CSS configuration — Autonomouse AI
- * ------------------------------------------
- * • content  → scans the `crt/` folder (your frontend / UI source)
- * • theme    → every value lives in the THEME SLOT below so you can
- *              re-theme the whole UI by editing exactly one section.
- * • darkMode → "class" (add `.dark` on your <html> tag to switch themes)
+ * shadcn/ui v3-style token mapping. Colors read from CSS custom properties
+ * defined in src/renderer/index.css (`:root` = light, `.dark` = dark) so the
+ * theme toggle only ever needs to flip a class on <html> — no Tailwind
+ * rebuild, no second source of truth.
  */
 
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: "class",
-
-  // ---------------------------------------------------------------
-  // CONTENT ROOT — point this at whichever folder holds your UI.
-  // Anything under ./crt that matches these extensions is scanned
-  // for class names.
-  // ---------------------------------------------------------------
-  content: ["./src/**/*.{html,js,ts,jsx,tsx,vue,svelte}"],
-  // If you ever move the frontend, just update the glob above.
-
+  content: ["./src/renderer/**/*.{html,ts,tsx}"],
   theme: {
     extend: {
-      /* ========================================================== */
-      /* ===================== THEME SLOT ========================= */
-      /* ==== EDIT THIS SECTION ONLY TO RE-THEME THE UI =========== */
-      /* ========================================================== */
-
       colors: {
-        // -- Base surfaces (dark, near-black with subtle warmth) --
-        base: {
-          950: "#0a0a0f",
-          900: "#111118",
-          850: "#16161f",
-          800: "#1c1c28",
-          700: "#262636",
-          600: "#34344a",
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
         },
-
-        // -- Ink / text (name + soft + faint for hierarchy) -------
-        ink: {
-          DEFAULT: "#ececf5", // primary text
-          soft: "#a6a6bd", // secondary text
-          faint: "#6d6d85", // muted / placeholders
-          inverse: "#0a0a0f", // text on light surfaces
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
         },
-
-        // -- Accent (brand / AI "presence" color) -----------------
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
         accent: {
-          DEFAULT: "#7c5cff", // primary interactive / AI
-          soft: "#a58fff", // hover / highlights
-          strong: "#5b3df0", // pressed / active
-          glow: "#8f6bff", // radial glow accents
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        // Session-status dots only — independent of the neutral brand
+        // palette above so status stays legible in both themes.
+        status: {
+          idle: "hsl(var(--status-idle))",
+          running: "hsl(var(--status-running))",
+          stopped: "hsl(var(--status-stopped))",
+          created: "hsl(var(--status-created))",
         },
 
-        // -- Semantic status colors --------------------------------
-        success: "#34d399",
-        warning: "#fbbf24",
-        danger: "#f87171",
-        info: "#38bdf8",
-
-        // -- Hairline borders / dividers ----------------------------
-        border: {
-          DEFAULT: "#262636",
-          strong: "#34344a",
-          faint: "#1c1c28",
-        },
+        // EchoAI-reference design-language tokens. These store complete CSS
+        // color values (hex/rgba), not HSL triplets like the tokens above —
+        // they don't need Tailwind's alpha-modifier trick, so there's no
+        // reason to force them through hsl(). See index.css for values.
+        "app-bg": "var(--bg-app)",
+        panel: "var(--bg-panel)",
+        "panel-border": "var(--panel-border)",
+        elevated: "var(--bg-elevated)",
+        "elevated-border": "var(--elevated-border)",
+        square: "var(--square-bg)",
+        "text-secondary": "var(--text-secondary)",
+        brand: "var(--brand)",
+        "brand-hover": "var(--brand-hover)",
+        "brand-ring": "var(--brand-ring)",
+        tooltip: "var(--tooltip-bg)",
+        "tooltip-text": "var(--tooltip-text)",
+        // Sidebar is a fixed dark palette regardless of theme (see
+        // `.sidebar-scope` in index.css) — these are its own explicit,
+        // precise tokens for the couple of spots the scoped shadcn
+        // token overrides don't cover (the "Recent" label's third muted
+        // tier, and the sidebar's exact translucent border).
+        "sidebar-faint": "var(--sidebar-text-faint)",
+        "sidebar-border": "var(--sidebar-border)",
+        "sidebar-elevated": "var(--sidebar-elevated)",
       },
-
-      fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
-        display: ["Space Grotesk", "Inter", "sans-serif"],
-      },
-
-      fontSize: {
-        // Fluid UI scale tuned for an overlay / HUD style interface
-        xs: ["0.7rem", { lineHeight: "1rem" }],
-        sm: ["0.8rem", { lineHeight: "1.2rem" }],
-        md: ["0.9rem", { lineHeight: "1.35rem" }],
-        lg: ["1.05rem", { lineHeight: "1.5rem" }],
-        xl: ["1.3rem", { lineHeight: "1.7rem" }],
-      },
-
       borderRadius: {
-        panel: "0.875rem", // main cards / dialogs
-        chip: "9999px", // pills / tags
-        control: "0.5rem", // inputs / buttons
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
       },
-
-      boxShadow: {
-        panel: "0 12px 40px rgb(0 0 0 / 0.5)",
-        pop: "0 18px 60px rgb(0 0 0 / 0.6), 0 0 40px rgb(124 92 255 / 0.12)",
-        glow: "0 0 24px rgb(124 92 255 / 0.4)",
-        inset_faint: "inset 0 1px 0 rgb(255 255 255 / 0.04)",
+      fontFamily: {
+        // Geist — matches hellobonsai.com/partners/dribbble's design system
+        // (see src/renderer/index.css for the self-hosted @font-face import).
+        sans: ["Geist Sans", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["Geist Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+        // Hero greeting only — a geometric sans distinct from the app's
+        // Geist branding, per the reference design's headline treatment.
+        hero: ["Inter", "Lato", "system-ui", "sans-serif"],
       },
-
-      backdropBlur: {
-        hud: "24px",
-      },
-
-      animation: {
-        "pulse-slow": "pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        "fade-up": "fadeUp 0.25s ease-out both",
-        "sweep": "sweep 2.2s ease-in-out infinite",
-      },
-
-      keyframes: {
-        fadeUp: {
-          "0%": { opacity: "0", transform: "translateY(8px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        sweep: {
-          "0%, 100%": { transform: "translateX(-100%)" },
-          "50%": { transform: "translateX(100%)" },
-        },
-      },
-
-      transitionTimingFunction: {
-        "out-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
-      },
-
-      /* ========================================================== */
-      /* =================== END THEME SLOT ======================== */
-      /* ========================================================== */
     },
   },
-
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 };

@@ -6,7 +6,11 @@ import electron from "vite-plugin-electron/simple";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
+// `--mode web` (see package.json's "dev:web") serves only the renderer in a
+// regular browser tab, for quick UI/styling iteration — no Electron process,
+// no IPC bridge. window.agentBridge is unavailable there; App.tsx detects
+// that and shows a notice instead of pretending session data exists.
+export default defineConfig(({ mode }) => ({
   root: path.join(__dirname, "src/renderer"),
   resolve: {
     alias: {
@@ -17,33 +21,37 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    electron({
-      main: {
-        entry: path.join(__dirname, "src/main/index.ts"),
-        vite: {
-          build: {
-            outDir: path.join(__dirname, "dist-electron/main"),
-            rollupOptions: {
-              external: ["electron"],
+    ...(mode === "web"
+      ? []
+      : [
+          electron({
+            main: {
+              entry: path.join(__dirname, "src/main/index.ts"),
+              vite: {
+                build: {
+                  outDir: path.join(__dirname, "dist-electron/main"),
+                  rollupOptions: {
+                    external: ["electron"],
+                  },
+                },
+              },
             },
-          },
-        },
-      },
-      preload: {
-        input: path.join(__dirname, "src/preload/index.ts"),
-        vite: {
-          build: {
-            outDir: path.join(__dirname, "dist-electron/preload"),
-            rollupOptions: {
-              external: ["electron"],
+            preload: {
+              input: path.join(__dirname, "src/preload/index.ts"),
+              vite: {
+                build: {
+                  outDir: path.join(__dirname, "dist-electron/preload"),
+                  rollupOptions: {
+                    external: ["electron"],
+                  },
+                },
+              },
             },
-          },
-        },
-      },
-    }),
+          }),
+        ]),
   ],
   build: {
     outDir: path.join(__dirname, "dist"),
     emptyOutDir: true,
   },
-});
+}));

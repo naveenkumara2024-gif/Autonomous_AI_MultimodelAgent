@@ -34,6 +34,15 @@ Follow this loop for every request:
 
 Do not write code before the prompt is approved.
 
+**Small fixes vs. staged features.** The loop above is for planned feature/layer work. For a
+small, self-contained bug fix or UI correction that isn't introducing a new layer or feature (a
+wrong state update, a mislabeled button, a duplicate-row bug), skip the `prompts/` pre-approval
+step — just make the fix, then document it in `fix/<short-slug>.md`: what was reported, the root
+cause, and what changed (file + function). `prompts/` is for planned work reviewed before code is
+written; `fix/` is a record written after a correction, for the next person (or the next
+conversation) who wonders why something changed. Keep it to what's non-obvious from the diff
+itself — the bug's symptom and root cause — not a restatement of the code.
+
 ---
 
 # 3. Non-negotiable safety rules
