@@ -2,34 +2,34 @@
   "name": "autonomouse_ai",
   "version": "0.1.0",
   "description": "Autonomous multimodal AI desktop agent: a voice- and vision-driven framework for cross-application task automation.",
-  "type": "module",
   "private": true,
-  "main": "src/index.ts",
-  "module": "src/index.ts",
-  "types": "src/index.ts",
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "files": [
-    "src"
-  ],
+  "main": "dist-electron/main/index.js",
   "packageManager": "bun@1.3.14",
   "engines": {
     "bun": ">=1.3.0"
   },
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "typecheck": "tsc --noEmit",
+    "dev": "vite",
+    "build": "tsc -b && vite build && electron-builder",
+    "typecheck": "tsc -b",
     "test": "bun test"
   },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "autoprefixer": "^10.5.5",
-    "postcss": "^8.5.28",
-    "tailwindcss": "^3"
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.5.5",
+    "electron": "^41.7.1",
+    "electron-builder": "^26.8.1",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3",
+    "typescript": "^5",
+    "vite": "^7.3.1",
+    "vite-plugin-electron": "^0.29.1"
   }
 }

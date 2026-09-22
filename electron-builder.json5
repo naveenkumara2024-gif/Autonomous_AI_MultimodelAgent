@@ -1,0 +1,14 @@
+// Minimal packaging config for Stage 0. No icons, no code signing, no
+// mac/linux targets yet — follow-up for a later stage, not faked here.
+{
+  $schema: "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  appId: "ai.autonomous-desktop-agent",
+  productName: "Autonomous AI Desktop Agent",
+  directories: {
+    output: "release",
+  },
+  files: ["dist", "dist-electron"],
+  win: {
+    target: "nsis",
+  },
+}
