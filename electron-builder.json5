@@ -8,6 +8,10 @@
     output: "release",
   },
   files: ["dist", "dist-electron"],
+  // The desktop/browser automation MCP server, compiled to a standalone exe by
+  // `bun run build:mcp` (it needs Bun's bun:ffi, so it can't run inside Electron's Node).
+  // Resolved at runtime by src/main/mcp/server-command.ts.
+  extraResources: [{ from: "build/mcp-desktop.exe", to: "mcp-desktop.exe" }],
   win: {
     target: "nsis",
   },

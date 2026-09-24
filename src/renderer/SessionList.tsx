@@ -89,7 +89,12 @@ function SessionRow({
         />
       ) : (
         <button type="button" onClick={onSelect} className="min-w-0 flex-1 truncate text-left">
-          {session.title}
+          {/* key={session.title}: replays the fade-in whenever the title
+              text changes (truncated fallback -> AI-refined title, or a
+              manual rename), same treatment as TopBar's title. */}
+          <span key={session.title} className="block truncate animate-in fade-in-0 duration-300">
+            {session.title}
+          </span>
         </button>
       )}
 

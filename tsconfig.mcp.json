@@ -1,0 +1,28 @@
+{
+  // The MCP server is a separate Bun process (bun:ffi is Bun-only and can't
+  // load inside Electron's Node), so it gets its own project — Bun types,
+  // text imports for the .ps1 scripts — instead of sharing tsconfig.node.json.
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "types": ["bun"],
+
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noPropertyAccessFromIndexSignature": false
+  },
+  "include": ["src/mcp-server"]
+}

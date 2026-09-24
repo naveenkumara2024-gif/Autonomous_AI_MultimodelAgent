@@ -1,6 +1,9 @@
-import { ArrowUp, Mic, Plus } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUp, Mic, Plus, Square } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import { ApprovalDialog } from "./ApprovalDialog";
 import { SessionList } from "./SessionList";
+import { TracePanel } from "./TracePanel";
 import { AeroShards } from "./components/backgrounds/AeroShards";
 import { SideRays } from "./components/backgrounds/SideRays";
 import { TopBar } from "./components/TopBar";
@@ -10,8 +13,9 @@ import { useBackgroundEffect } from "./hooks/useBackgroundEffect";
 import { useSidebarWidth } from "./hooks/useSidebarWidth";
 import { useTheme } from "./hooks/useTheme";
 import { HERO_BACKGROUND_IMAGE } from "./lib/hero-background";
-import type { Message, Session } from "./types";
-import { useSessionStatusEvent, useSessionUpdateEvent } from "./hooks/useIPC";
+import type { Message, Session, TraceEvent } from "./types";
+import { useSessionMessageEvent, useSessionStatusEvent, useSessionUpdateEvent } from "./hooks/useIPC";
+import { useApprovals, useTrace } from "./hooks/useTrace";
 
 export default function App() {
   const { theme, toggleTheme } = useTheme();
@@ -27,6 +31,10 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [landingDraft, setLandingDraft] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const trace = useTrace(selectedId);
+  const approvals = useApprovals();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasBridge = typeof window.agentBridge !== "undefined";
 
@@ -61,33 +69,66 @@ export default function App() {
   }, []);
   useSessionStatusEvent(handleSessionStatus);
 
+  // The agent's reply arrives at the end of a turn, pushed from main.
+  const handleSessionMessage = useCallback(
+    (message: Message) => {
+      if (message.sessionId !== selectedId) return;
+      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+    },
+    [selectedId],
+  );
+  useSessionMessageEvent(handleSessionMessage);
+
   const selectedSession = useMemo(
     () => sessions.find((s) => s.id === selectedId) ?? null,
     [sessions, selectedId],
   );
+  const isRunning = selectedSession?.status === "running";
 
-  const handleCreate = useCallback(async () => {
-    // Don't add to `sessions` here — main already emits a "session.update"
-    // event for this (see session-manager.ts's createSession), which
-    // useSessionUpdateEvent/handleSessionUpdate applies above. That event
-    // typically arrives before this invoke's own promise resolves (it's
-    // sent from inside the IPC handler, before the handler returns), so
-    // adding the session again here raced with it and produced a duplicate
-    // row with the same id. See fix/new-chat-duplicate-session.md.
-    const session = await window.agentBridge.createSession();
-    setSelectedId(session.id);
+  // Trace events grouped by turn — a turn's id is the id of the user message that started it.
+  const traceByTurn = useMemo(() => {
+    const map = new Map<string, TraceEvent[]>();
+    for (const e of trace) map.set(e.turnId, [...(map.get(e.turnId) ?? []), e]);
+    return map;
+  }, [trace]);
+  const lastUserMessageId = useMemo(() => [...messages].reverse().find((m) => m.role === "user")?.id ?? null, [messages]);
+
+  // Keep the newest activity in view while a turn streams in.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 240) el.scrollTop = el.scrollHeight;
+  }, [messages, trace]);
+
+  const handleCreate = useCallback(() => {
+    // "New chat" doesn't eagerly create a session row anymore — it just
+    // returns to the hero landing page, same as Home. The session itself is
+    // created lazily by handleLandingSubmit once the user actually sends a
+    // first message, so clicking "New chat" repeatedly doesn't pile up
+    // empty "New session" rows in the sidebar.
+    setSelectedId(null);
+    setLandingDraft("");
   }, []);
 
   const handleSend = useCallback(async () => {
-    if (!selectedId || !draft.trim()) return;
+    if (!selectedId || !draft.trim() || isRunning) return;
     const content = draft.trim();
     setDraft("");
-    const { message, session } = await window.agentBridge.continueSession(selectedId, content);
-    setMessages((prev) => [...prev, message]);
-    setSessions((prev) =>
-      prev.map((s) => (s.id === session.id ? session : s)).sort((a, b) => b.updatedAt - a.updatedAt),
-    );
-  }, [selectedId, draft]);
+    setSendError(null);
+    try {
+      const { message, session } = await window.agentBridge.continueSession(selectedId, content);
+      setMessages((prev) => [...prev, message]);
+      setSessions((prev) =>
+        prev.map((s) => (s.id === session.id ? session : s)).sort((a, b) => b.updatedAt - a.updatedAt),
+      );
+    } catch (error) {
+      setDraft(content);
+      setSendError(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(error));
+    }
+  }, [selectedId, draft, isRunning]);
+
+  const handleStop = useCallback(() => {
+    if (selectedId) void window.agentBridge.cancelTurn(selectedId);
+  }, [selectedId]);
 
   const handleRename = useCallback(async (id: string, title: string) => {
     // Same reasoning as handleCreate — the "session.update" event this
@@ -194,28 +235,65 @@ export default function App() {
                 AI title generation lands (see prompts/stage-1-session-core.md
                 decision 8), it belongs in TopBar and only appears once a
                 real title exists, not as a permanent fixture. */}
-            <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
-              {messages.map((m) => (
-                <div key={m.id} className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
-                  <span className="mr-2 font-mono text-xs text-muted-foreground">{m.role}</span>
-                  {m.content}
-                </div>
-              ))}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="mx-auto flex max-w-3xl flex-col gap-4">
+                {messages.map((m) =>
+                  m.role === "user" ? (
+                    <div key={m.id} className="flex flex-col gap-2">
+                      <div className="self-end whitespace-pre-wrap rounded-2xl rounded-br-md bg-secondary px-4 py-2 text-sm text-secondary-foreground">
+                        {m.content}
+                      </div>
+                      {traceByTurn.has(m.id) && (
+                        <TracePanel
+                          events={traceByTurn.get(m.id)!}
+                          running={isRunning && m.id === lastUserMessageId}
+                          defaultOpen={m.id === lastUserMessageId}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <div key={m.id} className="agent-markdown text-sm leading-relaxed text-foreground">
+                      <ReactMarkdown
+                        components={{
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noreferrer" className="text-status-running underline underline-offset-2">
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+                    </div>
+                  ),
+                )}
+              </div>
             </div>
 
-            <div className="flex gap-2 border-t border-border p-3">
-              <Input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleSend();
-                }}
-                placeholder="Type a message…"
-                className="flex-1"
-              />
-              <Button type="button" onClick={() => void handleSend()}>
-                Send
-              </Button>
+            <div className="border-t border-border p-3">
+              {sendError && <p className="mx-auto mb-2 max-w-3xl text-xs text-destructive">{sendError}</p>}
+              <div className="mx-auto flex max-w-3xl gap-2">
+                <Input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleSend();
+                  }}
+                  placeholder={isRunning ? "Working… press Stop to interrupt" : "Ask the agent to do something…"}
+                  disabled={isRunning}
+                  className="flex-1"
+                />
+                {isRunning ? (
+                  <Button type="button" variant="secondary" onClick={handleStop} aria-label="Stop">
+                    <Square className="size-3.5 fill-current" />
+                    Stop
+                  </Button>
+                ) : (
+                  <Button type="button" onClick={() => void handleSend()} disabled={!draft.trim()}>
+                    Send
+                  </Button>
+                )}
+              </div>
             </div>
           </>
         ) : (
@@ -233,9 +311,6 @@ export default function App() {
               <h1 className="text-[40px] font-medium tracking-[-0.02em] text-foreground">Hey There</h1>
               <p className="text-[38px] font-medium tracking-[-0.02em] text-text-secondary dark:text-white/40">
                 What can I help you get done?
-              </p>
-              <p className="mt-2.5 text-sm font-normal text-muted-foreground dark:text-white/60">
-                C
               </p>
             </div>
 
@@ -293,6 +368,8 @@ export default function App() {
           </div>
         )}
       </div>
+
+      <ApprovalDialog requests={approvals} />
     </div>
   );
 }

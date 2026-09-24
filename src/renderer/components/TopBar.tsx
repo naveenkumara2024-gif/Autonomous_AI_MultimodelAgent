@@ -32,7 +32,15 @@ export function TopBar({
     // Aero Shards specifically, since unlike Side Rays' transparent canvas,
     // its background is fully opaque.
     <div className="relative z-10 flex items-center justify-between px-6 py-5">
-      <span className="truncate text-sm font-medium text-foreground">{title}</span>
+      {/* key={title}: remounts the span whenever the title text changes
+          (truncated fallback -> AI-refined title, or a manual rename), so
+          the fade-in below replays instead of the text just snapping. */}
+      <span
+        key={title}
+        className="truncate text-sm font-medium text-foreground animate-in fade-in-0 duration-300"
+      >
+        {title}
+      </span>
 
       <TooltipProvider delayDuration={300}>
         <div className="flex items-center gap-2">

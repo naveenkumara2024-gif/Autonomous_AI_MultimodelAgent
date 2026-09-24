@@ -9,7 +9,7 @@
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["node"],
+    "types": ["node", "bun"],
 
     "strict": true,
     "skipLibCheck": true,

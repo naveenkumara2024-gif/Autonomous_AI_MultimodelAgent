@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { Session } from "../types";
+import type { Message, Session } from "../types";
 
 /** Thin wrapper over window.agentBridge so components don't touch it directly. */
 export function useAgentBridge() {
@@ -32,4 +32,12 @@ export function useSessionStatusEvent(onStatus: (payload: SessionStatusPayload) 
       onStatus(payload as SessionStatusPayload),
     );
   }, [onStatus]);
+}
+
+/** A message appended by main (the agent's reply at the end of a turn). */
+export function useSessionMessageEvent(onMessage: (message: Message) => void): void {
+  useEffect(() => {
+    if (!window.agentBridge) return;
+    return window.agentBridge.onSessionEvent("session.message", (payload) => onMessage(payload as Message));
+  }, [onMessage]);
 }

@@ -5,6 +5,12 @@ import type { MessageRow, SessionRow } from "../db/database";
 
 export type SessionStatus = "created" | "idle" | "running" | "stopped" | "deleted";
 export type MessageRole = "user" | "assistant" | "system";
+/**
+ * 'auto' until renameSession() is called; once 'manual', no automatic
+ * process (title-generator.ts) may overwrite the title again. See
+ * prompts/ai-title-generation.md.
+ */
+export type TitleSource = "auto" | "manual";
 
 export interface Message {
   id: string;
@@ -17,6 +23,7 @@ export interface Message {
 export interface Session {
   id: string;
   title: string;
+  titleSource: TitleSource;
   status: SessionStatus;
   model: string;
   permissionHooks: AgentConfig["defaultPermissionHooks"];
@@ -30,6 +37,7 @@ function toSession(row: SessionRow): Session {
   return {
     id: row.id,
     title: row.title,
+    titleSource: row.title_source as TitleSource,
     status: row.status as SessionStatus,
     model: row.model,
     permissionHooks: JSON.parse(row.permission_hooks),
@@ -63,6 +71,7 @@ export class SessionStore {
       permission_hooks: JSON.stringify(config.defaultPermissionHooks),
       retry_policy: JSON.stringify(config.defaultRetryPolicy),
       context_compaction: JSON.stringify(config.defaultContextCompaction),
+      title_source: "auto",
       created_at: now,
       updated_at: now,
     };
@@ -70,8 +79,8 @@ export class SessionStore {
     this.db
       .prepare(
         `INSERT INTO sessions
-          (id, title, status, model, permission_hooks, retry_policy, context_compaction, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, title, status, model, permission_hooks, retry_policy, context_compaction, title_source, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         row.id,
@@ -81,6 +90,7 @@ export class SessionStore {
         row.permission_hooks,
         row.retry_policy,
         row.context_compaction,
+        row.title_source,
         row.created_at,
         row.updated_at,
       );
@@ -108,14 +118,24 @@ export class SessionStore {
       .run(status, Date.now(), id);
   }
 
-  updateTitle(id: string, title: string): void {
+  updateTitle(id: string, title: string, source: TitleSource = "auto"): void {
     this.db
-      .prepare(`UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`)
-      .run(title, Date.now(), id);
+      .prepare(`UPDATE sessions SET title = ?, title_source = ?, updated_at = ? WHERE id = ?`)
+      .run(title, source, Date.now(), id);
   }
 
   deleteSession(id: string): void {
     this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+  }
+
+  /** One-time model migration (e.g. Stage 1's unused placeholder → the real agent model). */
+  replaceModel(from: string, to: string): number {
+    return Number(this.db.prepare(`UPDATE sessions SET model = ? WHERE model = ?`).run(to, from).changes);
+  }
+
+  /** A turn can't survive an app restart; sessions left "running" by a crash go back to idle. */
+  resetInterruptedRuns(): number {
+    return Number(this.db.prepare(`UPDATE sessions SET status = 'idle' WHERE status = 'running'`).run().changes);
   }
 
   appendMessage(sessionId: string, role: MessageRole, content: string): Message {

@@ -14,6 +14,10 @@ export interface SideRaysProps {
   intensity?: number;
   spread?: number;
   origin?: Origin;
+  /** Ray source X, as a multiple of canvas width from the left edge. Source default: 1.1 (just off the right edge). */
+  originOffsetX?: number;
+  /** Ray source Y, as a multiple of canvas height from the top edge. Source default: -0.5 (above the canvas). */
+  originOffsetY?: number;
   tilt?: number;
   saturation?: number;
   blend?: number;
@@ -37,6 +41,8 @@ interface SideRaysUniforms {
   iSpread: { value: number };
   iFlipX: { value: number };
   iFlipY: { value: number };
+  iOriginX: { value: number };
+  iOriginY: { value: number };
   iTilt: { value: number };
   iSaturation: { value: number };
   iBlend: { value: number };
@@ -58,17 +64,19 @@ const originToFlip = (origin: Origin): [number, number] => {
 };
 
 export function SideRays({
-  speed = 5.5,
+  speed = 1.5,
   rayColor1 = "#EAB308",
   rayColor2 = "#96c8ff",
-  intensity = 3,
-  spread = 3,
+  intensity = 0.8,
+  spread = 1,
   origin = "top-right",
-  tilt = 20,
+  originOffsetX = 1.1,
+  originOffsetY = -0.34,
+  tilt = 0,
   saturation = 1.5,
-  blend = 0.75,
+  blend = 0.65,
   falloff = 2.5,
-  opacity = 1.7,
+  opacity = 0.5,
   className = "",
 }: SideRaysProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -148,6 +156,8 @@ uniform float iIntensity;
 uniform float iSpread;
 uniform float iFlipX;
 uniform float iFlipY;
+uniform float iOriginX;
+uniform float iOriginY;
 uniform float iTilt;
 uniform float iSaturation;
 uniform float iBlend;
@@ -170,7 +180,7 @@ void main() {
   if (iFlipY > 0.5) fragCoord.y = iResolution.y - fragCoord.y;
 
   vec2 coord = vec2(fragCoord.x, iResolution.y - fragCoord.y);
-  vec2 rayPos = vec2(iResolution.x * 1.1, -0.5 * iResolution.y);
+  vec2 rayPos = vec2(iResolution.x * iOriginX, iResolution.y * iOriginY);
 
   float tiltRad = iTilt * 3.14159265 / 180.0;
   float cs = cos(tiltRad);
@@ -209,6 +219,8 @@ void main() {
         iSpread: { value: spread },
         iFlipX: { value: flipX },
         iFlipY: { value: flipY },
+        iOriginX: { value: originOffsetX },
+        iOriginY: { value: originOffsetY },
         iTilt: { value: tilt },
         iSaturation: { value: saturation },
         iBlend: { value: blend },
@@ -286,7 +298,22 @@ void main() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVisible, speed, rayColor1, rayColor2, intensity, spread, origin, tilt, saturation, blend, falloff, opacity]);
+  }, [
+    isVisible,
+    speed,
+    rayColor1,
+    rayColor2,
+    intensity,
+    spread,
+    origin,
+    originOffsetX,
+    originOffsetY,
+    tilt,
+    saturation,
+    blend,
+    falloff,
+    opacity,
+  ]);
 
   useEffect(() => {
     if (!uniformsRef.current) return;
@@ -299,12 +326,28 @@ void main() {
     const [flipX, flipY] = originToFlip(origin);
     u.iFlipX.value = flipX;
     u.iFlipY.value = flipY;
+    u.iOriginX.value = originOffsetX;
+    u.iOriginY.value = originOffsetY;
     u.iTilt.value = tilt;
     u.iSaturation.value = saturation;
     u.iBlend.value = blend;
     u.iFalloff.value = falloff;
     u.iOpacity.value = opacity;
-  }, [speed, rayColor1, rayColor2, intensity, spread, origin, tilt, saturation, blend, falloff, opacity]);
+  }, [
+    speed,
+    rayColor1,
+    rayColor2,
+    intensity,
+    spread,
+    origin,
+    originOffsetX,
+    originOffsetY,
+    tilt,
+    saturation,
+    blend,
+    falloff,
+    opacity,
+  ]);
 
   return <div ref={containerRef} className={`side-rays-container ${className}`.trim()} />;
 }
