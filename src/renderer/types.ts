@@ -45,6 +45,7 @@ export type TraceEventType =
   | "lock_wait"
   | "tool_execution_end"
   | "mcp_log"
+  | "shortcut"
   | "error";
 
 export interface TraceEvent {

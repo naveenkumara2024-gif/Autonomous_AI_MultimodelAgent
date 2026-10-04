@@ -14,6 +14,10 @@ export const uiAutomationWorker = new PsLineWorker(join(tmpdir(), "mcp-desktop-u
 // warm process.
 export const redactionWorker = new PsLineWorker(join(tmpdir(), "mcp-desktop-redaction.ps1"), uiAutomationScript);
 
+// launch_app polls for the launched window for up to several seconds; on its own process that
+// polling can never queue a concurrent find_element behind it.
+export const appLauncherWorker = new PsLineWorker(join(tmpdir(), "mcp-desktop-app-launcher.ps1"), uiAutomationScript);
+
 export const systemControlWorker = new PsLineWorker(join(tmpdir(), "mcp-desktop-system-control.ps1"), systemControlScript);
 
 export interface UiElement {

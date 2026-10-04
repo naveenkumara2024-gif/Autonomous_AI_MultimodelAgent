@@ -7,6 +7,7 @@ import { loadConfig } from "./config/config-store";
 import { loadEnvFile } from "./config/load-env";
 import { openDatabase } from "./db/database";
 import { McpClientManager } from "./mcp/mcp-client";
+import { ActionCache } from "./memory/action-cache";
 import { resolveMcpServerCommand } from "./mcp/server-command";
 import { loadRenderer } from "./nav-server";
 import { probeHotkey } from "./perception/global-hotkey";
@@ -57,6 +58,7 @@ function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionM
   });
   approvals = new ApprovalGate(send);
   const traces = new TraceStore(db, path.join(app.getPath("userData"), "traces"), send);
+  const actionCache = new ActionCache(db);
 
   const sessionManager = new SessionManager(db, config, send, {
     mcp,
@@ -64,6 +66,8 @@ function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionM
     locks: resourceLocks,
     traces,
     policy: () => ({ allowScreenshotsToModel: config.allowScreenshotsToModel }),
+    actionCache,
+    actionCacheEnabled: () => config.actionCacheEnabled,
   });
 
   // Warm the automation server in the background so the first prompt doesn't pay its startup.
@@ -84,6 +88,7 @@ function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionM
   registerHandler("session.stop", (_e, sessionId: string) => sessionManager.stopSession(sessionId));
   registerHandler("session.delete", (_e, sessionId: string) => sessionManager.deleteSession(sessionId));
 
+  registerHandler("actionCache.clear", () => actionCache.clear());
   registerHandler("trace.image", (_e, imagePath: string) => traces.readImage(imagePath));
   registerHandler("approval.list", () => approvals!.list());
   registerHandler("approval.respond", (_e, id: string, approved: boolean) => approvals!.respond(id, approved === true));

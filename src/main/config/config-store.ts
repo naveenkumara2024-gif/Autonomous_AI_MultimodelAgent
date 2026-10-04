@@ -26,6 +26,11 @@ export interface AgentConfig {
    * perception/redactor.ts). false = vision off; the agent relies on UI Automation / DOM only.
    */
   allowScreenshotsToModel: boolean;
+  /**
+   * Replay a repeated request's cached, verified steps instead of re-planning with the model
+   * (memory/action-cache.ts). false = neither record nor replay recipes.
+   */
+  actionCacheEnabled: boolean;
   /** Voice trigger (perception L1/L2): global hotkey + local speech-to-text. false = typing only. */
   voiceEnabled: boolean;
   /** Electron accelerator for the toggle-to-talk hotkey. Change it here if another app holds it. */
@@ -52,6 +57,7 @@ const DEFAULT_CONFIG: AgentConfig = {
     threshold: 0.8,
   },
   allowScreenshotsToModel: true,
+  actionCacheEnabled: true,
   voiceEnabled: true,
   voiceHotkey: "CommandOrControl+Shift+Space",
   voiceModel: "large-v3-turbo-q5_0",

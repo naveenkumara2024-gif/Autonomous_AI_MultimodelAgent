@@ -94,6 +94,30 @@ describe("resource-lock-manager", () => {
     expect(overlapped(spans)).toBe(true);
   });
 
+  test("launch_app: the same app serializes (no double launch); it runs concurrently with browser work", async () => {
+    const same = await runPair(
+      new ResourceLockManager(),
+      { name: "a", tool: "launch_app", args: { app_name: "WhatsApp" } },
+      { name: "b", tool: "launch_app", args: { app_name: "whatsapp" } },
+    );
+    expect(overlapped(same)).toBe(false);
+    const cross = await runPair(
+      new ResourceLockManager(),
+      { name: "launch", tool: "launch_app", args: { app_name: "Calculator" } },
+      { name: "browser", tool: "browser_click", args: { selector: "#go" } },
+    );
+    expect(overlapped(cross)).toBe(true);
+  });
+
+  test("launch_app moves keyboard focus, so it never overlaps typing from any source", async () => {
+    const spans = await runPair(
+      new ResourceLockManager(),
+      { name: "launch", tool: "launch_app", args: { app_name: "Notepad" } },
+      { name: "type", tool: "type_text", args: { text: "hi" } },
+    );
+    expect(overlapped(spans)).toBe(false);
+  });
+
   test("multi-key acquisition is atomic and waiting reports waitedMs", async () => {
     const locks = new ResourceLockManager();
     const first = await locks.acquire(["a"]);

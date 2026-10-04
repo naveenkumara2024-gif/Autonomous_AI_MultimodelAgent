@@ -1,4 +1,4 @@
-import { ptr } from "bun:ffi";
+import { type Pointer, ptr, toArrayBuffer } from "bun:ffi";
 import { sleep } from "../core/async";
 import { getGdi32, getKernel32, getUser32 } from "./ffi";
 import type { RawImage } from "./png";
@@ -17,34 +17,40 @@ function captureOnce(x: number, y: number, width: number, height: number): RawIm
     const hdcMem = gdi32.CreateCompatibleDC(hdcScreen);
     if (!hdcMem) throw new Error("CreateCompatibleDC failed.");
     try {
-      const hBitmap = gdi32.CreateCompatibleBitmap(hdcScreen, width, height);
-      if (!hBitmap) throw new Error(`CreateCompatibleBitmap failed (GetLastError=${kernel32.GetLastError()}).`);
+      // BITMAPINFOHEADER, 32bpp BI_RGB, positive biHeight = bottom-up (the layout png.ts expects).
+      const bmiBuf = new Uint8Array(40);
+      const bmiDv = new DataView(bmiBuf.buffer);
+      bmiDv.setUint32(0, 40, true); // biSize
+      bmiDv.setInt32(4, width, true); // biWidth
+      bmiDv.setInt32(8, height, true); // biHeight
+      bmiDv.setUint16(12, 1, true); // biPlanes
+      bmiDv.setUint16(14, 32, true); // biBitCount
+      bmiDv.setUint32(16, 0, true); // biCompression = BI_RGB
+      const pixelBytes = width * height * 4;
+      bmiDv.setUint32(20, pixelBytes, true); // biSizeImage
+
+      // BitBlt straight into a DIB section and copy its memory out. The previous
+      // CreateCompatibleBitmap + GetDIBits path intermittently returned 0 scanlines with
+      // GetLastError=0 for every retry in a row (seen in live traces and the test suite);
+      // a DIB section has no separate readback call to fail.
+      const bitsOut = new BigUint64Array(1);
+      const hBitmap = gdi32.CreateDIBSection(hdcScreen, ptr(bmiBuf), DIB_RGB_COLORS, ptr(bitsOut), null, 0);
+      if (!hBitmap) throw new Error(`CreateDIBSection failed (GetLastError=${kernel32.GetLastError()}).`);
       try {
+        const bits = Number(bitsOut[0]);
+        if (!bits) throw new Error("CreateDIBSection returned no pixel buffer.");
         const hOld = gdi32.SelectObject(hdcMem, hBitmap);
-        if (!gdi32.BitBlt(hdcMem, 0, 0, width, height, hdcScreen, x, y, SRCCOPY)) {
-          const err = kernel32.GetLastError();
+        try {
+          if (!gdi32.BitBlt(hdcMem, 0, 0, width, height, hdcScreen, x, y, SRCCOPY)) {
+            throw new Error(`BitBlt failed (GetLastError=${kernel32.GetLastError()}).`);
+          }
+          gdi32.GdiFlush();
+          // Copy: the DIB's memory is freed with the bitmap below.
+          const pixels = new Uint8Array(toArrayBuffer(bits as Pointer, 0, pixelBytes).slice(0));
+          return { width, height, pixels };
+        } finally {
           gdi32.SelectObject(hdcMem, hOld);
-          throw new Error(`BitBlt failed (GetLastError=${err}).`);
         }
-        // GetDIBits needs the bitmap deselected from any DC before it can read its bits.
-        gdi32.SelectObject(hdcMem, hOld);
-
-        // BITMAPINFOHEADER, 32bpp BI_RGB, positive biHeight = bottom-up.
-        const bmiBuf = new Uint8Array(40);
-        const bmiDv = new DataView(bmiBuf.buffer);
-        bmiDv.setUint32(0, 40, true); // biSize
-        bmiDv.setInt32(4, width, true); // biWidth
-        bmiDv.setInt32(8, height, true); // biHeight
-        bmiDv.setUint16(12, 1, true); // biPlanes
-        bmiDv.setUint16(14, 32, true); // biBitCount
-        bmiDv.setUint32(16, 0, true); // biCompression = BI_RGB
-        const pixelBytes = width * height * 4;
-        bmiDv.setUint32(20, pixelBytes, true); // biSizeImage
-
-        const pixels = new Uint8Array(pixelBytes);
-        const scanLines = gdi32.GetDIBits(hdcScreen, hBitmap, 0, height, ptr(pixels), ptr(bmiBuf), DIB_RGB_COLORS);
-        if (scanLines === 0) throw new Error(`GetDIBits failed (GetLastError=${kernel32.GetLastError()}).`);
-        return { width, height, pixels };
       } finally {
         gdi32.DeleteObject(hBitmap);
       }

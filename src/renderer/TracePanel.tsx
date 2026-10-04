@@ -100,6 +100,14 @@ export function buildTurnView(events: TraceEvent[]): TurnView {
         (group ? group.items : view.timeline).push(note);
         break;
       }
+      case "shortcut": {
+        // Why something ran without the model: a fast path, or a replay from the action cache.
+        const what = d.kind === "recipe" ? "Action cache" : `Fast path "${d.name ?? ""}"`;
+        const text = `⚡ ${what}: ${String(d.result ?? "")}${d.text ? ` — ${d.text}` : ""}`;
+        const tone = d.result === "aborted" ? "error" : "normal";
+        view.timeline.push({ kind: "note", id: e.id, actor: "system", text, tone });
+        break;
+      }
       case "llm_request":
         view.llmCalls++;
         break;
