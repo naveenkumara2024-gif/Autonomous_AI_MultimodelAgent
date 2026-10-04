@@ -13,6 +13,7 @@ import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs"
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  WHISPER_CUDA_RUNTIME_DLL,
   WHISPER_SERVER_EXE,
   WHISPER_SERVER_ZIP,
   WHISPER_SERVER_ZIP_URL,
@@ -57,7 +58,8 @@ function findFile(dir: string, name: string): string | null {
 }
 
 async function setupServer(): Promise<void> {
-  if (fileExists(path.join(serverDir, WHISPER_SERVER_EXE))) {
+  // The cuBLAS DLL check upgrades an older CPU-only (11.8) install in place.
+  if (fileExists(path.join(serverDir, WHISPER_SERVER_EXE)) && fileExists(path.join(serverDir, WHISPER_CUDA_RUNTIME_DLL))) {
     console.log(`whisper server already present: ${serverDir}`);
     return;
   }

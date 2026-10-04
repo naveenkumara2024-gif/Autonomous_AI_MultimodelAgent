@@ -12,10 +12,13 @@ import { pipeline } from "node:stream/promises";
 
 // Pinned: "latest" would silently change the server's CLI/behavior under us.
 export const WHISPER_RELEASE_TAG = "b5130";
-// The 11.8 CUDA build is forward-compatible with newer drivers and 2.5x smaller than 12.4.
-export const WHISPER_SERVER_ZIP = "whisper-cublas-11.8.0-bin-x64.zip";
+// The 12.4 CUDA build is the one that bundles its own cuBLAS (cublas64_12.dll). The 11.8 build
+// expects a locally installed CUDA toolkit, so on a stock machine ggml silently falls back to CPU.
+export const WHISPER_SERVER_ZIP = "whisper-cublas-12.4.0-bin-x64.zip";
 export const WHISPER_SERVER_ZIP_URL = `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_RELEASE_TAG}/${WHISPER_SERVER_ZIP}`;
 export const WHISPER_SERVER_EXE = "whisper-server.exe";
+/** Shipped only by the GPU-capable build; its absence means an older (CPU-only) server is installed. */
+export const WHISPER_CUDA_RUNTIME_DLL = "cublas64_12.dll";
 
 const MODEL_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
