@@ -37,3 +37,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # compiled MCP automation server (bun run build:mcp)
 build/mcp-desktop.exe
+
+# whisper.cpp server for the voice trigger (bun run setup:voice)
+build/whisper/
+build/whisper-dl/

@@ -2,7 +2,7 @@
 
 import type { ApprovalRequest, Message, Session, TraceEvent } from "./types";
 
-type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved";
+type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session";
 
 // Mirrors the shape exposed by src/preload/index.ts. Not imported directly
 // from there — preload belongs to tsconfig.node.json's project, and this
@@ -27,6 +27,11 @@ declare global {
       getTraceImage: (imagePath: string) => Promise<string | null>;
       listApprovals: () => Promise<ApprovalRequest[]>;
       respondApproval: (id: string, approved: boolean) => Promise<void>;
+      setVoiceTarget: (sessionId: string | null) => Promise<void>;
+      voiceToggle: () => Promise<void>;
+      voiceCancel: () => Promise<void>;
+      voiceSubmit: (wav: Uint8Array) => Promise<void>;
+      voiceCaptureError: (reason: string) => Promise<void>;
       onSessionEvent: (channel: EventChannel, listener: (payload: unknown) => void) => () => void;
     };
   }

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import type { McpServerCommand } from "./mcp/mcp-client";
 
 export interface PreflightCheck {
@@ -27,6 +27,16 @@ function mcpServerCheck(server: McpServerCommand): PreflightCheck {
   };
 }
 
+/** Whether the configured whisper model is on disk (the app downloads it on first run if not). */
+export function voiceModelCheck(model: string): PreflightCheck {
+  const present = existsSync(model) && statSync(model).size > 0;
+  return {
+    name: "voice-model",
+    passed: present,
+    detail: present ? model : `missing ${model} (the app downloads it on first run, or run \`bun run setup:voice\`)`,
+  };
+}
+
 function chromeCheck(): PreflightCheck {
   // The browser tools launch Chrome through its App Paths registration (what makes Win+R
   // "chrome" work), so that's the thing to verify.
@@ -47,7 +57,7 @@ function chromeCheck(): PreflightCheck {
  * Failures are logged, not fatal: the app still opens, and the affected feature reports its
  * own clear error when used.
  */
-export async function runPreflight(options: { mcpServer: McpServerCommand }): Promise<PreflightResult> {
+export async function runPreflight(options: { mcpServer: McpServerCommand; extraChecks?: PreflightCheck[] }): Promise<PreflightResult> {
   const checks: PreflightCheck[] = [
     mcpServerCheck(options.mcpServer),
     {
@@ -56,6 +66,7 @@ export async function runPreflight(options: { mcpServer: McpServerCommand }): Pr
       detail: process.env.AGENT_API_KEY ? `endpoint ${process.env.AGENT_BASE_URL ?? "(AGENT_BASE_URL missing)"}` : "AGENT_API_KEY / AGENT_BASE_URL not set in .env",
     },
     chromeCheck(),
+    ...(options.extraChecks ?? []),
   ];
   return { ok: checks.every((c) => c.passed), checks };
 }

@@ -79,6 +79,19 @@ export default function App() {
   );
   useSessionMessageEvent(handleSessionMessage);
 
+  // Tell main which session is selected, so a voice trigger continues it (or creates a new one
+  // when we're on the landing page), and follow along when voice creates a session.
+  useEffect(() => {
+    if (hasBridge) void window.agentBridge.setVoiceTarget(selectedId);
+  }, [hasBridge, selectedId]);
+  useEffect(() => {
+    if (!hasBridge) return;
+    return window.agentBridge.onSessionEvent("voice.focus-session", (payload) => {
+      const { sessionId } = payload as { sessionId: string };
+      setSelectedId(sessionId);
+    });
+  }, [hasBridge]);
+
   const selectedSession = useMemo(
     () => sessions.find((s) => s.id === selectedId) ?? null,
     [sessions, selectedId],
