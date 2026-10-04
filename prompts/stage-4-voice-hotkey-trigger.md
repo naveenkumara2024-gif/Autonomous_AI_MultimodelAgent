@@ -181,7 +181,10 @@ Findings that differ from the assumptions above — recorded so the next stage d
   `ggml-cuda.dll` imports `cublas64_11.dll`, which the `b5130` 11.8 zip does not ship (it expects
   a locally installed CUDA toolkit). ggml silently falls back to the CPU backend ("no GPU found"),
   so voice works but runs on CPU. The 12.4.0 zip (671MB) does include `cublas64_12.dll` /
-  `cublasLt64_12.dll`. Switching builds is a size/latency tradeoff left for the user to decide.
+  `cublasLt64_12.dll`. **Resolved: the project now pins the 12.4.0 build** (`voice-assets.ts`),
+  verified on the RTX 3050 Laptop (`using CUDA0 backend`, model loaded on the GPU). `setup:voice`
+  re-fetches when `cublas64_12.dll` is missing, so an old 11.8 install upgrades itself. The
+  installer grows by roughly 400MB.
 - whisper.cpp is pinned to release tag `b5130` (the newest tag with Windows binaries attached;
   `v1.9.4` has no assets). `scripts/setup-voice.ts` keeps only `whisper-server.exe` + DLLs (the zip
   also carries bench/stream/test tools that would bloat the installer).
