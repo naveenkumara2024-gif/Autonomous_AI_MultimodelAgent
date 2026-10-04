@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 // at some "minimum expanded" size, it keeps going down to an icon-only rail
 // (just wide enough for the home + new-session icons) instead of vanishing.
 export const SIDEBAR_ICON_WIDTH = 60;
-export const SIDEBAR_COLLAPSE_THRESHOLD = 160;
+export const SIDEBAR_COLLAPSE_THRESHOLD = 60;
 export const SIDEBAR_MAX_WIDTH = 480;
 export const SIDEBAR_DEFAULT_WIDTH = 256; // matches the old fixed w-64
 

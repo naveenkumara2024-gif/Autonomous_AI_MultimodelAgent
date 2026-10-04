@@ -11,7 +11,13 @@
   // The desktop/browser automation MCP server, compiled to a standalone exe by
   // `bun run build:mcp` (it needs Bun's bun:ffi, so it can't run inside Electron's Node).
   // Resolved at runtime by src/main/mcp/server-command.ts.
-  extraResources: [{ from: "build/mcp-desktop.exe", to: "mcp-desktop.exe" }],
+  // Likewise the whisper.cpp server (+ its CUDA DLLs) for the voice trigger, unpacked into
+  // build/whisper by `bun run setup:voice`. The speech model is NOT bundled; the app downloads
+  // it to <userData>/voice on first run (src/main/perception/voice-controller.ts).
+  extraResources: [
+    { from: "build/mcp-desktop.exe", to: "mcp-desktop.exe" },
+    { from: "build/whisper", to: "whisper" },
+  ],
   win: {
     target: "nsis",
   },

@@ -54,6 +54,24 @@ export interface ToolCallOutcome {
   traceId: string;
 }
 
+/** One executed call as the action cache sees it (memory/action-cache.ts builds recipes from these). */
+export interface ExecutedCall {
+  tool: string;
+  /** Literal args, without `intent`. */
+  args: Record<string, unknown>;
+  intent: string;
+  subagent: string;
+  status: ToolCallStatus;
+  isError: boolean;
+  resources: string[];
+  verdict: "allow" | "block-until-approved" | null;
+  riskCategory: string | null;
+  /** OS/DOM facts observed for classification (e.g. the focused field of a type_text). */
+  context: ClassifierContext;
+  /** Result text, truncated. */
+  text: string;
+}
+
 const CONTEXT_LOOKUP_TIMEOUT_MS = 4000;
 const LOCK_WAIT_TRACE_THRESHOLD_MS = 50;
 
@@ -110,6 +128,8 @@ export function summarizeResult(text: string): string {
     return `found ${what}`.trim();
   }
   if (typeof v.url === "string") return clip(`${v.title ? `${v.title} — ` : ""}${v.url}`);
+  // Tools that already phrase their outcome (launch_app) say it best themselves.
+  if (typeof v.message === "string" && v.message) return clip(v.message);
   return clip(JSON.stringify(v));
 }
 
@@ -121,6 +141,9 @@ function truncateArgs(args: Record<string, unknown>): Record<string, unknown> {
 }
 
 export class ToolExecutor {
+  /** Every call this turn, in completion order. */
+  readonly log: ExecutedCall[] = [];
+
   constructor(
     private readonly deps: ExecutorDeps,
     private readonly turn: TurnContext,
@@ -175,9 +198,15 @@ export class ToolExecutor {
     const started = Date.now();
 
     const traceId = trace.emit("tool_execution_start", subagent, { tool, intent, args: truncateArgs(args), resources }, request.parentTraceId);
+    let observed: ClassifierContext = {};
+    let verdict: ExecutedCall["verdict"] = null;
 
     const finish = (status: ToolCallStatus, text: string, extra: Record<string, unknown>, images: CandidateImage[] = [], approval: string | null = null, category: string | null = null): ToolCallOutcome => {
       const ms = Date.now() - started;
+      this.log.push({
+        tool, args, intent, subagent, status, isError: extra.isError === true || status !== "ok",
+        resources, verdict, riskCategory: category, context: observed, text: text.slice(0, 2000),
+      });
       trace.emit("tool_execution_end", subagent, { tool, intent, status, ms, resultSummary: summarizeResult(text), resultPreview: text.slice(0, 600), ...extra }, traceId);
       trace.recordToolExecution({
         id: randomUUID(),
@@ -202,6 +231,8 @@ export class ToolExecutor {
     // 1. Classify — on literal args plus OS/DOM observations, never on intent or reasoning.
     const { context, notes } = await this.observeContext(tool, args);
     const risk = classify(tool, args, context);
+    observed = context;
+    verdict = risk.verdict;
     trace.emit(
       "tool_risk",
       subagent,

@@ -41,6 +41,12 @@ const ADVERSARIAL_POWERSHELL: Array<[string, string]> = [
   ["command inside a calculated property", "Get-ChildItem | Select-Object @{N='x';E={git push}}"],
   ["unsafe .NET type", "[System.Diagnostics.Process]::Start('cmd.exe')"],
   ["unsafe .NET type behind a pure one", "[math]::Abs(1); [System.IO.Directory]::Delete('C:\\x', $true)"],
+  // Stage 6: quote-aware segmenting and keyword skipping must not open new holes.
+  ["ForEach-Object member invocation via the foreach alias", "Get-ChildItem C:\\x | foreach Delete"],
+  ["delete inside a foreach body", "foreach ($f in (Get-ChildItem C:\\x)) { Remove-Item $f }"],
+  ["unknown command after a quoted path", "Test-Path 'C:\\Program Files (x86)\\X'; git push"],
+  ["subexpression hidden inside double quotes", "Write-Output \"$(Remove-Item C:\\x)\""],
+  ["command after a quote-doubled string", "Write-Output 'it''s'; npm install x"],
 ];
 
 describe("risk-classifier: adversarial PowerShell (must block 100%)", () => {
@@ -76,6 +82,13 @@ describe("risk-classifier: read-only PowerShell runs without approval", () => {
     // The exact command the agent wrote in the first end-to-end run — read-only, so no prompt.
     "Get-ChildItem -Path 'C:\\Users\\me\\Downloads' -File | Sort-Object Length -Descending | Select-Object -First 3 Name, @{N='SizeMB';E={[math]::Round($_.Length / 1MB, 2)}}",
     "Get-Date -Format o; [datetime]::Now.DayOfWeek",
+    // Stage 6: commands the agent wrote while looking for WhatsApp, each wrongly sent to approval
+    // (parentheses inside a quoted path, `@(…)` array literals, `foreach`, Appx/Start inventory).
+    "Test-Path 'C:\\Program Files (x86)\\WhatsApp'",
+    "Test-Path 'C:\\Program Files\\WhatsApp'; Test-Path 'C:\\Program Files (x86)\\WhatsApp'; Test-Path 'C:\\Program Files\\Microsoft\\WhatsApp'",
+    "$paths = @(\n  'C:\\Users\\me\\Start Menu\\Programs\\WhatsApp.lnk',\n  'C:\\ProgramData\\Start Menu\\Programs\\WhatsApp.lnk'\n)\nforeach ($p in $paths) { if (Test-Path $p) { \"FOUND: $p\" } else { \"MISSING: $p\" } }",
+    "Get-AppxPackage -Name *whatsapp* | Select-Object Name, Version, PackageLocation | Format-Table -AutoSize",
+    "Get-StartApps | Where-Object { $_.Name -like '*whatsapp*' }",
   ];
   for (const command of READ_ONLY) {
     test(command, () => {
@@ -135,8 +148,8 @@ describe("risk-classifier: desktop and browser input", () => {
     expect(blocked("clear_click_history", {})).toBe(true);
   });
 
-  test("observation tools are allowed", () => {
-    for (const tool of ["screenshot_for_display", "find_element", "get_displays", "browser_get_text", "browser_find", "browser_navigate"]) {
+  test("observation tools and launch_app (starts only Start-menu/taskbar-registered apps) are allowed", () => {
+    for (const tool of ["screenshot_for_display", "find_element", "get_displays", "browser_get_text", "browser_find", "browser_navigate", "launch_app"]) {
       expect(blocked(tool, {})).toBe(false);
     }
   });

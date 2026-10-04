@@ -174,3 +174,24 @@ Modify:
    and that nothing is queued or lost.
 6. Change `voiceHotkey` in `config.json` to a combo already bound by another running app; restart;
    confirm preflight reports the conflict clearly instead of silently failing later.
+
+## Implementation notes (added after building)
+Findings that differ from the assumptions above — recorded so the next stage doesn't rediscover them:
+- **Decision 4 did not hold: the CUDA 11.8 build cannot use the GPU on a stock machine.** Its
+  `ggml-cuda.dll` imports `cublas64_11.dll`, which the `b5130` 11.8 zip does not ship (it expects
+  a locally installed CUDA toolkit). ggml silently falls back to the CPU backend ("no GPU found"),
+  so voice works but runs on CPU. The 12.4.0 zip (671MB) does include `cublas64_12.dll` /
+  `cublasLt64_12.dll`. **Resolved: the project now pins the 12.4.0 build** (`voice-assets.ts`),
+  verified on the RTX 3050 Laptop (`using CUDA0 backend`, model loaded on the GPU). `setup:voice`
+  re-fetches when `cublas64_12.dll` is missing, so an old 11.8 install upgrades itself. The
+  installer grows by roughly 400MB.
+- whisper.cpp is pinned to release tag `b5130` (the newest tag with Windows binaries attached;
+  `v1.9.4` has no assets). `scripts/setup-voice.ts` keeps only `whisper-server.exe` + DLLs (the zip
+  also carries bench/stream/test tools that would bloat the installer).
+- Extra files beyond the plan: `perception/overlay-window.ts` (the overlay `BrowserWindow`),
+  `perception/voice-controller.ts` (Electron wiring), `perception/voice-assets.ts` (shared
+  download/path helpers used by both the app and the setup script), `renderer/lib/wav.ts`.
+- The overlay is the same renderer bundle loaded at `#overlay` (`main.tsx` picks the route).
+  Only the overlay's webContents may drive `voice.*` IPC or hold a microphone permission.
+- The hidden overlay would keep the app alive after the main window closes, so closing the main
+  window now calls `app.quit()`.

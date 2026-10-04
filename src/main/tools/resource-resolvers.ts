@@ -34,6 +34,15 @@ export function resolveResources(tool: string, args: Record<string, unknown>): s
   // with each other (and only each other).
   if (tool === "run_powershell") return [SHELL];
 
+  // Launching/switching sends no input events, but it moves keyboard focus to another window —
+  // a concurrent type_text/key_press would land in the wrong app — so it holds native-input
+  // too. Two launches of the same app serialize (no double launch); different apps only wait
+  // on each other through native-input, for the few hundred ms a launch takes.
+  if (tool === "launch_app") {
+    const app = typeof args.app_name === "string" ? args.app_name.trim().toLowerCase().replace(/\s+/g, " ") : "";
+    return [`app-launch:${app}`, NATIVE_INPUT];
+  }
+
   if (tool === "screenshot") return typeof args.output_path === "string" ? [fileKey(args.output_path)] : [];
 
   if (tool.startsWith("browser_")) {

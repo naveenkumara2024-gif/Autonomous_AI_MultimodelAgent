@@ -7,9 +7,13 @@ import { loadConfig } from "./config/config-store";
 import { loadEnvFile } from "./config/load-env";
 import { openDatabase } from "./db/database";
 import { McpClientManager } from "./mcp/mcp-client";
+import { ActionCache } from "./memory/action-cache";
 import { resolveMcpServerCommand } from "./mcp/server-command";
 import { loadRenderer } from "./nav-server";
-import { runPreflight } from "./preflight";
+import { probeHotkey } from "./perception/global-hotkey";
+import { startVoice, voiceDir, type VoiceController } from "./perception/voice-controller";
+import { modelPath, isValidModelName } from "./perception/voice-assets";
+import { runPreflight, voiceModelCheck } from "./preflight";
 import { ApprovalGate } from "./sandbox/approval-gate";
 import { resourceLocks } from "./sandbox/resource-lock-manager";
 import { SessionManager } from "./session/session-manager";
@@ -32,10 +36,11 @@ if (!app.isPackaged && process.env.AGENT_DEBUG_CDP_PORT) {
 
 let mcp: McpClientManager | null = null;
 let approvals: ApprovalGate | null = null;
+let voice: VoiceController | null = null;
 
 registerHandler("app:getVersion", () => app.getVersion());
 
-function registerSessionHandlers(win: BrowserWindow): void {
+function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionManager; config: ReturnType<typeof loadConfig>; send: (channel: string, payload: unknown) => void } {
   const db = openDatabase();
   const config = loadConfig();
   const send = (channel: string, payload: unknown) => {
@@ -53,6 +58,7 @@ function registerSessionHandlers(win: BrowserWindow): void {
   });
   approvals = new ApprovalGate(send);
   const traces = new TraceStore(db, path.join(app.getPath("userData"), "traces"), send);
+  const actionCache = new ActionCache(db);
 
   const sessionManager = new SessionManager(db, config, send, {
     mcp,
@@ -60,6 +66,8 @@ function registerSessionHandlers(win: BrowserWindow): void {
     locks: resourceLocks,
     traces,
     policy: () => ({ allowScreenshotsToModel: config.allowScreenshotsToModel }),
+    actionCache,
+    actionCacheEnabled: () => config.actionCacheEnabled,
   });
 
   // Warm the automation server in the background so the first prompt doesn't pay its startup.
@@ -80,9 +88,12 @@ function registerSessionHandlers(win: BrowserWindow): void {
   registerHandler("session.stop", (_e, sessionId: string) => sessionManager.stopSession(sessionId));
   registerHandler("session.delete", (_e, sessionId: string) => sessionManager.deleteSession(sessionId));
 
+  registerHandler("actionCache.clear", () => actionCache.clear());
   registerHandler("trace.image", (_e, imagePath: string) => traces.readImage(imagePath));
   registerHandler("approval.list", () => approvals!.list());
   registerHandler("approval.respond", (_e, id: string, approved: boolean) => approvals!.respond(id, approved === true));
+
+  return { sessionManager, config, send };
 }
 
 async function createWindow(): Promise<void> {
@@ -124,13 +135,31 @@ async function createWindow(): Promise<void> {
     }
   });
 
-  registerSessionHandlers(win);
+  // The hidden voice overlay is also a BrowserWindow, so "window-all-closed" would never fire
+  // once the main window is gone — closing the main window has to quit explicitly.
+  win.on("closed", () => app.quit());
+
+  const { sessionManager, config, send } = registerSessionHandlers(win);
 
   await loadRenderer(win);
+
+  // Perception L1/L2: global hotkey -> overlay -> local speech-to-text -> the same
+  // continueSession path typed prompts use. Started after the main window so the overlay
+  // (a second window) never competes with it for first paint.
+  voice = startVoice({ config, sessionManager, sendToMain: send, appRoot: APP_ROOT });
 }
 
 app.whenReady().then(async () => {
-  const preflight = await runPreflight({ mcpServer });
+  const config = loadConfig();
+  const extraChecks = config.voiceEnabled
+    ? [
+        { name: "voice-hotkey", ...probeHotkey(config.voiceHotkey) },
+        isValidModelName(config.voiceModel)
+          ? voiceModelCheck(modelPath(voiceDir(), config.voiceModel))
+          : { name: "voice-model", passed: false, detail: `invalid voiceModel "${config.voiceModel}"` },
+      ]
+    : [];
+  const preflight = await runPreflight({ mcpServer, extraChecks });
   for (const check of preflight.checks) {
     console.log(`[preflight] ${check.passed ? "ok  " : "FAIL"} ${check.name} — ${check.detail}`);
   }
@@ -145,5 +174,6 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   // Nothing flagged may run after the user can no longer see or answer its dialog.
   approvals?.denyAll();
+  voice?.stop();
   void mcp?.stop();
 });

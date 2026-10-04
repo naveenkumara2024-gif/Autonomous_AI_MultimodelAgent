@@ -17,12 +17,12 @@ ${roster}
 
 Routing guidance:
 - Anything on a website → **browser** (it uses its own automation Chrome profile; the user may need to log in there once).
-- Native Windows apps, the user's open windows, anything that needs clicking/typing in an app → **desktop**.
-- Files, folders, system information, processes, launching apps by name → **shell**. Prefer shell over desktop for file operations: it's faster and verifiable.
+- Opening, launching or switching to any app (by name, from the taskbar or search), native Windows apps, the user's open windows, anything that needs clicking/typing in an app → **desktop**. It opens apps in about a second with its \`launch_app\` tool; never send app-opening to shell (shell can't find Store apps such as WhatsApp).
+- Files, folders, system information, processes → **shell**. Prefer shell over desktop for file operations: it's faster and verifiable.
 
 ## Process
 Every round costs the user time, so combine actions: each response should both record state AND move the work forward.
-1. **Plan + start (first response).** Call \`set_checklist\` — the smallest set of concrete, verifiable items that fully covers the request (usually 1–5), each with a clear done-criterion — and, in the SAME response, \`dispatch\` every item that can start right away. If the request needs no action at all (a question you can answer directly), just call \`finish\`.
+1. **Plan + start (first response).** Call \`set_checklist\` — the smallest set of concrete, verifiable items that fully covers the request (usually 1–5), each with a clear done-criterion — and put every item that can start right away into its \`dispatches\` field, so planning and starting happen in ONE step. If the request needs no action at all (a question you can answer directly), just call \`finish\`.
 2. **Delegate.** A dispatch brief must be self-contained. Specialists do NOT see this conversation, so include everything they need: the goal, exact names/paths/URLs/values (including results from earlier steps), constraints, what data to return, and how they'll know they're done. Issue several dispatches in one response only for items that are truly independent of each other.
 3. **Check + continue (every later response).** Read each report against its done-criterion; a "done" without evidence is not done. In ONE response, call \`update_checklist\` together with the next step — the next \`dispatch\`, or \`finish\` when everything is settled.
 4. **Recover.** If an item failed, re-dispatch with a better brief or a different specialist/approach — not the same brief again. Each item may be retried at most ${limits.maxRetries} times. If the user denied an action, respect it: do not try to achieve the same thing another way; tell the user.
@@ -46,14 +46,34 @@ const CHECKLIST_ITEM = {
   required: ["id", "text"],
 };
 
+function dispatchSchema(subagents: string[]) {
+  return {
+    type: "object",
+    properties: {
+      subagent: { type: "string", enum: subagents },
+      checklist_item_ids: { type: "array", items: { type: "string" }, description: "Checklist items this dispatch works toward." },
+      brief: { type: "string", description: "Goal, exact facts (names, paths, URLs, values), constraints, data to return, and done-criterion." },
+    },
+    required: ["subagent", "checklist_item_ids", "brief"],
+  };
+}
+
 export function supervisorTools(subagents: string[]): FunctionTool[] {
   return [
     {
       type: "function",
       function: {
         name: "set_checklist",
-        description: "Record the plan: the verifiable items that together complete the user's request. Call once, first. Replaces any previous checklist.",
-        parameters: { type: "object", properties: { items: { type: "array", items: CHECKLIST_ITEM, minItems: 1 } }, required: ["items"] },
+        description:
+          "Record the plan: the verifiable items that together complete the user's request. Call once, first. Replaces any previous checklist. Put the items that can start right away in `dispatches` — they are dispatched immediately, exactly as if you had called `dispatch` for each.",
+        parameters: {
+          type: "object",
+          properties: {
+            items: { type: "array", items: CHECKLIST_ITEM, minItems: 1 },
+            dispatches: { type: "array", items: dispatchSchema(subagents), description: "Dispatches to start now (same fields as the dispatch tool)." },
+          },
+          required: ["items"],
+        },
       },
     },
     {
@@ -61,15 +81,7 @@ export function supervisorTools(subagents: string[]): FunctionTool[] {
       function: {
         name: "dispatch",
         description: "Delegate work to a specialist. The brief must be self-contained — the specialist sees nothing else.",
-        parameters: {
-          type: "object",
-          properties: {
-            subagent: { type: "string", enum: subagents },
-            checklist_item_ids: { type: "array", items: { type: "string" }, description: "Checklist items this dispatch works toward." },
-            brief: { type: "string", description: "Goal, exact facts (names, paths, URLs, values), constraints, data to return, and done-criterion." },
-          },
-          required: ["subagent", "checklist_item_ids", "brief"],
-        },
+        parameters: dispatchSchema(subagents),
       },
     },
     {

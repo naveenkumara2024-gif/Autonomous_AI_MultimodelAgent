@@ -4,6 +4,7 @@ import { errorMessage } from "./core/async";
 import { createToolRegistrar } from "./core/define-tool";
 import { DATA_DIR, migrateLegacyData } from "./core/paths";
 import { registerAppTools } from "./tools/apps";
+import { registerLaunchTools, warmLauncher } from "./tools/apps-launch";
 import { registerBrowserDomTools } from "./tools/browser-dom";
 import { registerBrowserPageTools } from "./tools/browser-page";
 import { registerBrowserTabTools } from "./tools/browser-tabs";
@@ -30,6 +31,7 @@ export function createServer(): { server: McpServer; toolNames: string[] } {
   const { defineTool, names } = createToolRegistrar(server);
 
   registerAppTools(defineTool);
+  registerLaunchTools(defineTool);
   registerMouseTools(defineTool);
   registerKeyboardTools(defineTool);
   registerScreenTools(defineTool);
@@ -51,6 +53,7 @@ async function main(): Promise<void> {
   });
   const { server, toolNames } = createServer();
   await server.connect(new StdioServerTransport());
+  warmLauncher();
   console.error(
     `[mcp-desktop] v${SERVER_VERSION} running on stdio — ${toolNames.length} tools, data dir ${DATA_DIR}${migrated ? " (copied click history from ~/.mcpgui)" : ""}`,
   );

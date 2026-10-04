@@ -73,8 +73,14 @@ const READ_ONLY_COMMANDS = new Set(
     "get-netipaddress", "get-printer", "get-package", "get-hotfix", "get-eventlog", "get-winevent",
     "get-clipboard", "get-variable", "gv", "get-alias", "gal", "get-member", "gm", "get-history", "h",
     "whoami", "hostname", "systeminfo", "ver", "where.exe", "tasklist",
+    // installed-app inventory (read-only; what "is X installed / how do I open X" needs)
+    "get-startapps", "get-appxpackage",
   ],
 );
+
+// Control-flow keywords head a segment but aren't commands; their conditions and bodies are
+// split into their own segments (at `(`/`{`) and checked individually.
+const LANGUAGE_KEYWORDS = new Set(["foreach", "for", "if", "elseif", "else", "while", "do"]);
 
 /**
  * Command-name matcher. PowerShell names contain hyphens and `\b` treats "-" as a boundary, so
@@ -194,20 +200,58 @@ function unsafeStaticCalls(command: string): string[] {
  * mere expression.
  */
 function stripAssignments(segment: string): string {
-  let s = segment.replace(/^@/, "").trim();
+  let s = segment.trim();
   for (let prev = ""; prev !== s; ) {
     prev = s;
-    s = s.replace(/^\$?[\w:.]+\s*=(?!=)\s*/, "").trim();
+    // `$x = @(…)` / `@{…}` leave a bare `@` once the parenthesis splits off: an array or
+    // hashtable literal, not a command.
+    s = s.replace(/^@/, "").replace(/^\$?[\w:.]+\s*=(?!=)\s*/, "").trim();
   }
   return s;
 }
 
-/** Splits a command into its pipeline/statement/script-block segments. */
+/**
+ * Splits a command into its pipeline/statement/script-block segments. Delimiters inside quoted
+ * strings are literal text, not syntax — `Test-Path 'C:\Program Files (x86)\X'` is ONE segment.
+ * (Quoted text can't hide a command from this check: `$(…)` is forbidden anywhere, including
+ * inside double quotes, and every destructive rule scans the whole command text.)
+ */
 function commandSegments(command: string): string[] {
-  return command
-    .split(/;|\|\||&&|\||\r?\n|\{|\}|\(|\)/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const segments: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!;
+    if (quote) {
+      current += c;
+      if (c === quote) {
+        // PowerShell escapes a quote inside a same-quoted string by doubling it.
+        if (command[i + 1] === quote) current += command[++i];
+        else quote = null;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      current += c;
+      continue;
+    }
+    const two = command.slice(i, i + 2);
+    if (two === "||" || two === "&&") {
+      segments.push(current);
+      current = "";
+      i++;
+      continue;
+    }
+    if (";|\n\r{}()".includes(c)) {
+      segments.push(current);
+      current = "";
+      continue;
+    }
+    current += c;
+  }
+  segments.push(current);
+  return segments.map((s) => s.trim()).filter(Boolean);
 }
 
 /** Why a command is NOT provably read-only, or [] when every segment is allowlisted. */
@@ -222,6 +266,9 @@ function readOnlyViolations(command: string): string[] {
     // Pure expressions (`$_.Length -gt 1MB`, a literal, a -switch, a static call on a type
     // already vetted above) aren't commands; method calls within them are caught above.
     if (head === "" || /^[$'"\d-]/.test(head) || /^\[[^\]]+\]/.test(head)) continue;
+    // Only the bare keyword: `gci | foreach Delete` is ForEach-Object invoking .Delete() on every
+    // item, and must fall through to the allowlist check (where it fails).
+    if (LANGUAGE_KEYWORDS.has(head) && segment.toLowerCase() === head) continue;
     if (BARE_LAUNCH.test(segment)) continue;
     // ipconfig is read-only only bare or with /all (not /release, /renew, /flushdns…).
     if (head === "ipconfig" || head === "ipconfig.exe") {

@@ -13,6 +13,8 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 const EXPECTED_TOOLS = [
   // desktop — app memory
   "get_all_visited_apps", "init_app", "clear_click_history", "get_click_history",
+  // desktop — app launching (stage 6)
+  "launch_app",
   // desktop — input
   "click", "scroll", "drag", "move_mouse", "get_mouse_position", "type_text", "key_press",
   // desktop — screen / UIA / system

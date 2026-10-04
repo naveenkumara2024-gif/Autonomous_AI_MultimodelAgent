@@ -31,6 +31,8 @@ export type TraceEventType =
   | "lock_wait"
   | "tool_execution_end"
   | "mcp_log"
+  /** A fast path or cached-recipe replay handled (or tried to handle) the turn without the model. */
+  | "shortcut"
   | "error";
 
 export interface TraceEvent {

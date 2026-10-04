@@ -36,16 +36,16 @@ const KERNEL32_SYMBOLS = {
 
 const GDI32_SYMBOLS = {
   CreateCompatibleDC: { args: [FFIType.ptr], returns: FFIType.ptr },
-  CreateCompatibleBitmap: { args: [FFIType.ptr, FFIType.i32, FFIType.i32], returns: FFIType.ptr },
   SelectObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
   BitBlt: {
     args: [FFIType.ptr, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.i32, FFIType.u32],
     returns: FFIType.bool,
   },
-  GetDIBits: {
-    args: [FFIType.ptr, FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr, FFIType.ptr, FFIType.u32],
-    returns: FFIType.i32,
+  CreateDIBSection: {
+    args: [FFIType.ptr, FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr, FFIType.u32],
+    returns: FFIType.ptr,
   },
+  GdiFlush: { args: [], returns: FFIType.bool },
   DeleteDC: { args: [FFIType.ptr], returns: FFIType.bool },
   DeleteObject: { args: [FFIType.ptr], returns: FFIType.bool },
 } as const;

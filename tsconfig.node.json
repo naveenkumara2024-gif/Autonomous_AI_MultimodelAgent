@@ -21,5 +21,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["src/main", "src/preload", "vite.config.ts"]
+  "include": ["src/main", "src/preload", "scripts", "vite.config.ts"]
 }

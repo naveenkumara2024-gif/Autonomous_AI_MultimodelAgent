@@ -11,9 +11,10 @@
   "scripts": {
     "dev": "vite",
     "dev:web": "vite --mode web",
+    "setup:voice": "bun run scripts/setup-voice.ts",
     "mcp:dev": "bun run src/mcp-server/index.ts",
     "build:mcp": "bun build src/mcp-server/index.ts --compile --target=bun-windows-x64 --outfile build/mcp-desktop.exe",
-    "build": "tsc -b && bun run build:mcp && vite build && electron-builder",
+    "build": "tsc -b && bun run build:mcp && bun run setup:voice --no-model && vite build && electron-builder",
     "typecheck": "tsc -b",
     "test": "bun test"
   },

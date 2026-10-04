@@ -26,6 +26,17 @@ export interface AgentConfig {
    * perception/redactor.ts). false = vision off; the agent relies on UI Automation / DOM only.
    */
   allowScreenshotsToModel: boolean;
+  /**
+   * Replay a repeated request's cached, verified steps instead of re-planning with the model
+   * (memory/action-cache.ts). false = neither record nor replay recipes.
+   */
+  actionCacheEnabled: boolean;
+  /** Voice trigger (perception L1/L2): global hotkey + local speech-to-text. false = typing only. */
+  voiceEnabled: boolean;
+  /** Electron accelerator for the toggle-to-talk hotkey. Change it here if another app holds it. */
+  voiceHotkey: string;
+  /** whisper.cpp model name: resolves to <userData>/voice/ggml-<voiceModel>.bin. */
+  voiceModel: string;
 }
 
 // Stage 1 wrote this placeholder into config.json and every session row; no code ever called
@@ -46,6 +57,10 @@ const DEFAULT_CONFIG: AgentConfig = {
     threshold: 0.8,
   },
   allowScreenshotsToModel: true,
+  actionCacheEnabled: true,
+  voiceEnabled: true,
+  voiceHotkey: "CommandOrControl+Shift+Space",
+  voiceModel: "large-v3-turbo-q5_0",
 };
 
 function configPath(): string {
@@ -71,7 +86,8 @@ export function loadConfig(): AgentConfig {
   try {
     const parsed = JSON.parse(readFileSync(file, "utf-8")) as Partial<AgentConfig>;
     cached = { ...DEFAULT_CONFIG, ...parsed };
-    if (cached.defaultModel === LEGACY_PLACEHOLDER_MODEL || !("allowScreenshotsToModel" in parsed)) {
+    const missingKey = (Object.keys(DEFAULT_CONFIG) as Array<keyof AgentConfig>).some((key) => !(key in parsed));
+    if (cached.defaultModel === LEGACY_PLACEHOLDER_MODEL || missingKey) {
       if (cached.defaultModel === LEGACY_PLACEHOLDER_MODEL) cached.defaultModel = DEFAULT_CONFIG.defaultModel;
       writeFileSync(file, JSON.stringify(cached, null, 2), "utf-8");
     }

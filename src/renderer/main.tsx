@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { OverlayWindow } from "./OverlayWindow";
 import "./index.css";
 
 const rootEl = document.getElementById("root");
@@ -10,6 +11,6 @@ if (!rootEl) {
 
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    <App />
+    {window.location.hash === "#overlay" ? <OverlayWindow /> : <App />}
   </React.StrictMode>,
 );
