@@ -131,7 +131,7 @@ export function startVoice(deps: VoiceControllerDeps): VoiceController {
     translate: translating
       ? async (text) => {
           const startedAt = Date.now();
-          const english = await translateToEnglish(text, { model: config.defaultModel });
+          const english = await translateToEnglish(text, { model: config.voiceTranslationModel });
           log(`translated ${text.length} chars in ${Date.now() - startedAt}ms${english === null ? " (failed)" : ""}`);
           return english;
         }

@@ -42,6 +42,11 @@ export interface AgentConfig {
    * "ta" = force Tamil and translate the transcript to English before it becomes the prompt.
    */
   voiceLanguage: VoiceLanguage;
+  /**
+   * Chat model that translates the transcript when voiceLanguage is "ta". Separate from
+   * defaultModel so a faster/cheaper non-reasoning model can be dropped in without touching the agent.
+   */
+  voiceTranslationModel: string;
 }
 
 export type VoiceLanguage = "auto" | "ta";
@@ -70,6 +75,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   voiceHotkey: "CommandOrControl+Shift+Space",
   voiceModel: "large-v3-turbo-q5_0",
   voiceLanguage: "auto",
+  voiceTranslationModel: "agnes-3-flash",
 };
 
 function configPath(): string {
