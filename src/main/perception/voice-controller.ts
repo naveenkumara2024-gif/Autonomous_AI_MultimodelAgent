@@ -9,6 +9,7 @@ import { OverlayWindow } from "./overlay-window";
 import { SpeechServer } from "./speech-server";
 import { downloadFile, fileExists, isValidModelName, modelPath, modelUrl } from "./voice-assets";
 import { resolveWhisperServerPath } from "./voice-server-command";
+import { translateToEnglish } from "./voice-translator";
 
 export interface VoiceControllerDeps {
   config: AgentConfig;
@@ -116,20 +117,31 @@ export function startVoice(deps: VoiceControllerDeps): VoiceController {
     overlay.send("voice.state", state);
   };
 
+  const translating = config.voiceLanguage === "ta";
+  if (translating) log("language: Tamil -> English translation enabled");
+
   const pipeline = new AudioPipeline({
     unavailableReason,
     transcribe: async (wav) => {
       const startedAt = Date.now();
-      const text = await speech.transcribe(wav);
+      const text = await speech.transcribe(wav, translating ? { language: "ta" } : {});
       log(`transcribed ${Math.round(wavDurationMs(wav) / 100) / 10}s of audio in ${Date.now() - startedAt}ms`);
       return text;
     },
+    translate: translating
+      ? async (text) => {
+          const startedAt = Date.now();
+          const english = await translateToEnglish(text, { model: config.defaultModel });
+          log(`translated ${text.length} chars in ${Date.now() - startedAt}ms${english === null ? " (failed)" : ""}`);
+          return english;
+        }
+      : undefined,
     activeSessionId: () => activeSessionId,
     sessions: {
       isBusy: (id) => sessionManager.listSessions().find((s) => s.id === id)?.status === "running",
       create: () => sessionManager.createSession(),
-      send: (id, text) => {
-        const { message } = sessionManager.continueSession(id, text);
+      send: (id, text, originalText) => {
+        const { message } = sessionManager.continueSession(id, text, originalText ? { originalText } : undefined);
         // The typed-send path adds its own message locally; a voice send has to be pushed.
         deps.sendToMain("session.message", message);
       },

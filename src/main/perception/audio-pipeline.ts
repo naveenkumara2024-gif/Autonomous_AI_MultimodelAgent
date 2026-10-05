@@ -14,12 +14,14 @@
  * risk classifier and approval gate apply unchanged — voice adds no new trust.
  */
 
-export type VoicePhase = "idle" | "recording" | "transcribing" | "notice";
+export type VoicePhase = "idle" | "recording" | "transcribing" | "translating" | "notice";
 
 export interface VoiceState {
   phase: VoicePhase;
   /** Human-readable text for the overlay (notice text, error, or transcript preview). */
   message?: string;
+  /** While translating: the transcript as heard, shown so the wait isn't a blank spinner. */
+  heard?: string;
 }
 
 export type CaptureAction = "start" | "stop" | "abort";
@@ -27,19 +29,28 @@ export type CaptureAction = "start" | "stop" | "abort";
 export interface DeliveredPrompt {
   sessionId: string;
   created: boolean;
+  /** What became the prompt: the English translation, or the transcript when none was needed. */
   text: string;
+  /** The transcript as heard, only when `text` is a translation of it. */
+  originalText?: string;
 }
 
 export interface AudioPipelineDeps {
   /** null = voice can be used right now; otherwise the reason it can't (shown in the overlay). */
   unavailableReason(): string | null;
   transcribe(wav: Uint8Array): Promise<string | null>;
+  /**
+   * Present only when the spoken language needs translating (voiceLanguage "ta"). Resolves to
+   * the English text, or null when translation is unavailable — the transcript is then sent as
+   * heard (never dropped) with a notice. Must not throw.
+   */
+  translate?(text: string): Promise<string | null>;
   /** The session currently selected in the UI, or null on the landing page. */
   activeSessionId(): string | null;
   sessions: {
     isBusy(sessionId: string): boolean;
     create(): { id: string };
-    send(sessionId: string, text: string): void;
+    send(sessionId: string, text: string, originalText?: string): void;
   };
   ui: {
     setState(state: VoiceState): void;
@@ -113,7 +124,7 @@ export class AudioPipeline {
       this.stopRecording();
       return;
     }
-    if (this.phase === "transcribing") return; // a clip is already being transcribed
+    if (this.phase === "transcribing" || this.phase === "translating") return; // a clip is already being processed
     this.startRecording();
   }
 
@@ -188,10 +199,25 @@ export class AudioPipeline {
       this.showNotice("Didn't catch that");
       return;
     }
-    this.deliver(text);
+
+    if (!this.deps.translate) {
+      this.deliver(text);
+      return;
+    }
+    // The filter above ran on the transcript, so no model call is spent on "Thank you".
+    this.phase = "translating";
+    this.deps.ui.setState({ phase: "translating", heard: text });
+    const english = await this.deps.translate(text);
+    if (english === null) {
+      this.deps.onLog?.("translation unavailable; sending the transcript as heard");
+      this.deliver(text, "Couldn't translate — sent as heard");
+      return;
+    }
+    // Same text back means it was already English: nothing to show as "original".
+    this.deliver(english, undefined, english === text ? undefined : text);
   }
 
-  private deliver(text: string): void {
+  private deliver(text: string, notice?: string, originalText?: string): void {
     try {
       let sessionId = this.targetSessionId;
       let created = false;
@@ -203,9 +229,10 @@ export class AudioPipeline {
         sessionId = this.deps.sessions.create().id;
         created = true;
       }
-      this.deps.sessions.send(sessionId, text);
-      this.deps.onDelivered?.({ sessionId, created, text });
-      this.setIdle();
+      this.deps.sessions.send(sessionId, text, originalText);
+      this.deps.onDelivered?.({ sessionId, created, text, ...(originalText ? { originalText } : {}) });
+      if (notice) this.showNotice(notice);
+      else this.setIdle();
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.deps.onLog?.(`could not deliver transcript: ${reason}`);

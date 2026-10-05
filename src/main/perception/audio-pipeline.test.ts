@@ -15,8 +15,9 @@ interface Harness {
   captures: CaptureAction[];
   transcribeCalls: number;
   created: string[];
-  sent: Array<{ sessionId: string; text: string }>;
+  sent: Array<{ sessionId: string; text: string; originalText?: string }>;
   delivered: DeliveredPrompt[];
+  translateCalls: string[];
 }
 
 function build(options: {
@@ -27,9 +28,18 @@ function build(options: {
   transcribeError?: boolean;
   maxRecordingMs?: number;
   sendError?: boolean;
+  /** Omit for "voice language auto" (no translate dep). A function simulates the translator. */
+  translate?: (text: string) => string | null;
 }): Harness {
-  const h: Harness = { pipeline: null as never, states: [], captures: [], transcribeCalls: 0, created: [], sent: [], delivered: [] };
+  const h: Harness = { pipeline: null as never, states: [], captures: [], transcribeCalls: 0, created: [], sent: [], delivered: [], translateCalls: [] };
+  const translate = options.translate;
   const deps: AudioPipelineDeps = {
+    translate: translate
+      ? async (text) => {
+          h.translateCalls.push(text);
+          return translate(text);
+        }
+      : undefined,
     unavailableReason: () => options.unavailable ?? null,
     transcribe: async () => {
       h.transcribeCalls++;
@@ -44,9 +54,9 @@ function build(options: {
         h.created.push(id);
         return { id };
       },
-      send: (sessionId, text) => {
+      send: (sessionId, text, originalText) => {
         if (options.sendError) throw new Error("session deleted");
-        h.sent.push({ sessionId, text });
+        h.sent.push({ sessionId, text, ...(originalText ? { originalText } : {}) });
       },
     },
     ui: { setState: (s) => h.states.push(s), capture: (a) => h.captures.push(a) },
@@ -186,6 +196,83 @@ describe("audio pipeline", () => {
     const h = build({});
     await h.pipeline.submit(fakeWav(2000));
     expect(h.transcribeCalls).toBe(0);
+  });
+});
+
+describe("tamil -> english translation", () => {
+  const TAMIL = "நோட்பேடைத் திற";
+  const speak = async (h: Harness, wavMs = 2000) => {
+    h.pipeline.toggle();
+    h.pipeline.toggle();
+    await h.pipeline.submit(fakeWav(wavMs));
+  };
+
+  test("the English translation is sent as the prompt; the Tamil rides along as originalText", async () => {
+    const h = build({ transcript: TAMIL, translate: () => "Open Notepad", activeSessionId: "s1" });
+    await speak(h);
+    expect(h.translateCalls).toEqual([TAMIL]);
+    expect(h.sent).toEqual([{ sessionId: "s1", text: "Open Notepad", originalText: TAMIL }]);
+    expect(h.delivered[0]).toEqual({ sessionId: "s1", created: false, text: "Open Notepad", originalText: TAMIL });
+    expect(h.states.map((s) => s.phase)).toContain("translating");
+    expect(h.states.find((s) => s.phase === "translating")?.heard).toBe(TAMIL);
+    expect(h.pipeline.currentPhase).toBe("idle");
+  });
+
+  test("a transcript that was already English comes back unchanged and carries no originalText", async () => {
+    const h = build({ transcript: "open notepad", translate: (t) => t });
+    await speak(h);
+    expect(h.sent).toEqual([{ sessionId: "new-1", text: "open notepad" }]);
+  });
+
+  test("silence, hallucinations and sub-400ms clips never reach the translator", async () => {
+    for (const transcript of [null, "", "Thank you.", "[BLANK_AUDIO]"]) {
+      const h = build({ transcript, translate: () => "x" });
+      await speak(h);
+      expect(h.translateCalls).toEqual([]);
+      expect(h.sent).toEqual([]);
+    }
+    const short = build({ translate: () => "x" });
+    await speak(short, 300);
+    expect(short.translateCalls).toEqual([]);
+  });
+
+  test("translation unavailable: the transcript is still delivered as heard, with a notice", async () => {
+    const h = build({ transcript: TAMIL, translate: () => null });
+    await speak(h);
+    expect(h.sent).toEqual([{ sessionId: "new-1", text: TAMIL }]);
+    expect(lastState(h)).toEqual({ phase: "notice", message: "Couldn't translate — sent as heard" });
+  });
+
+  test("language auto (no translate dep): never translates, transcript sent as before", async () => {
+    const h = build({ transcript: TAMIL });
+    await speak(h);
+    expect(h.translateCalls).toEqual([]);
+    expect(h.sent).toEqual([{ sessionId: "new-1", text: TAMIL }]);
+    expect(h.states.map((s) => s.phase)).not.toContain("translating");
+  });
+
+  test("a session that becomes busy during translation: discarded, not queued", async () => {
+    const busy: string[] = [];
+    const h = build({ transcript: TAMIL, activeSessionId: "s1", busy, translate: () => { busy.push("s1"); return "Open Notepad"; } });
+    await speak(h);
+    expect(h.sent).toEqual([]);
+    expect(lastState(h)?.message).toBe("Still working on the last request");
+  });
+
+  test("a hotkey press while translating is ignored", async () => {
+    let release!: (v: string) => void;
+    const h = build({ transcript: TAMIL });
+    (h.pipeline as unknown as { deps: AudioPipelineDeps }).deps.translate = () => new Promise<string>((r) => (release = r));
+    h.pipeline.toggle();
+    h.pipeline.toggle();
+    const submitting = h.pipeline.submit(fakeWav(2000));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(h.pipeline.currentPhase).toBe("translating");
+    h.pipeline.toggle();
+    expect(h.captures).toEqual(["start", "stop"]);
+    release("Open Notepad");
+    await submitting;
+    expect(h.sent).toHaveLength(1);
   });
 });
 

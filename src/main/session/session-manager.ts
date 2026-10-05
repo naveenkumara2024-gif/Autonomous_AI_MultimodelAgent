@@ -64,7 +64,7 @@ export class SessionManager {
    * the session `running`. The turn streams trace events as it works, then appends the
    * assistant's reply and returns the session to `idle` (section 7's event sequence).
    */
-  continueSession(sessionId: string, content: string): { session: Session; message: Message } {
+  continueSession(sessionId: string, content: string, options: { originalText?: string } = {}): { session: Session; message: Message } {
     let session = this.requireSession(sessionId);
     if (session.status === "running" || this.runners.get(sessionId)?.isRunning) {
       throw new Error("This session is still working on the previous request. Wait for it to finish or stop it first.");
@@ -78,7 +78,7 @@ export class SessionManager {
       .filter((m): m is Message & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const message = this.store.appendMessage(sessionId, "user", content);
+    const message = this.store.appendMessage(sessionId, "user", content, options.originalText);
     this.store.updateStatus(sessionId, "running");
     this.sendToRenderer("session.status", { id: sessionId, status: "running" });
 

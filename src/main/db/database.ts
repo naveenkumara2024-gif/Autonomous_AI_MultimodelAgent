@@ -22,6 +22,8 @@ export interface MessageRow {
   role: string;
   content: string;
   created_at: number;
+  /** Voice only: the transcript as heard, when `content` is its English translation. */
+  original_text: string | null;
 }
 
 export interface ToolExecutionRow {
@@ -129,6 +131,7 @@ function initializeSchema(db: DatabaseSync): void {
     )
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`);
+  ensureColumn(db, "messages", "original_text", "TEXT");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS tool_executions (

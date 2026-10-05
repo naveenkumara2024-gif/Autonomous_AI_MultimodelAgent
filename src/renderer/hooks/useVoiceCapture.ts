@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { encodeWav, WAV_SAMPLE_RATE } from "../lib/wav";
 
 export interface VoiceState {
-  phase: "idle" | "recording" | "transcribing" | "notice";
+  phase: "idle" | "recording" | "transcribing" | "translating" | "notice";
   message?: string;
+  heard?: string;
 }
 
 interface ActiveCapture {

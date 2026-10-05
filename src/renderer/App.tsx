@@ -256,6 +256,11 @@ export default function App() {
                       <div className="self-end whitespace-pre-wrap rounded-2xl rounded-br-md bg-secondary px-4 py-2 text-sm text-secondary-foreground">
                         {m.content}
                       </div>
+                      {m.originalText && (
+                        <div className="self-end whitespace-pre-wrap px-2 text-xs text-muted-foreground" title="Heard (translated to English above)">
+                          {m.originalText}
+                        </div>
+                      )}
                       {traceByTurn.has(m.id) && (
                         <TracePanel
                           events={traceByTurn.get(m.id)!}

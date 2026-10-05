@@ -18,6 +18,8 @@ export interface Message {
   role: MessageRole;
   content: string;
   createdAt: number;
+  /** Voice: the Tamil transcript, when `content` is its English translation. */
+  originalText?: string;
 }
 
 export interface Session {
@@ -55,6 +57,7 @@ function toMessage(row: MessageRow): Message {
     role: row.role as MessageRole,
     content: row.content,
     createdAt: row.created_at,
+    ...(row.original_text ? { originalText: row.original_text } : {}),
   };
 }
 
@@ -138,20 +141,21 @@ export class SessionStore {
     return Number(this.db.prepare(`UPDATE sessions SET status = 'idle' WHERE status = 'running'`).run().changes);
   }
 
-  appendMessage(sessionId: string, role: MessageRole, content: string): Message {
+  appendMessage(sessionId: string, role: MessageRole, content: string, originalText?: string): Message {
     const row: MessageRow = {
       id: randomUUID(),
       session_id: sessionId,
       role,
       content,
       created_at: Date.now(),
+      original_text: originalText ?? null,
     };
 
     this.db
       .prepare(
-        `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, session_id, role, content, created_at, original_text) VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(row.id, row.session_id, row.role, row.content, row.created_at);
+      .run(row.id, row.session_id, row.role, row.content, row.created_at, row.original_text);
 
     return toMessage(row);
   }

@@ -129,10 +129,12 @@ export class SpeechServer {
   }
 
   /** Returns the transcript, or null when the model heard nothing. Throws if the server is unusable. */
-  async transcribe(wav: Uint8Array): Promise<string | null> {
+  async transcribe(wav: Uint8Array, options: { language?: string } = {}): Promise<string | null> {
     await this.start();
     const form = new FormData();
     form.append("file", new Blob([wav], { type: "audio/wav" }), "clip.wav");
+    // Per-request override of the server's `-l auto` launch default (no restart needed).
+    if (options.language && /^[a-z]{2,3}$/.test(options.language)) form.append("language", options.language);
     form.append("response_format", "json");
     form.append("temperature", "0.0");
 

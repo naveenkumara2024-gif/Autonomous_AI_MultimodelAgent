@@ -64,6 +64,15 @@ export function OverlayWindow() {
             <div className="text-sm font-medium">Transcribing…</div>
           </>
         )}
+        {state.phase === "translating" && (
+          <>
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-white/70" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">Translating…</div>
+              {state.heard && <div className="truncate text-xs text-white/60">{state.heard}</div>}
+            </div>
+          </>
+        )}
         {state.phase === "notice" && <div className="text-sm font-medium">{state.message}</div>}
       </div>
     </div>

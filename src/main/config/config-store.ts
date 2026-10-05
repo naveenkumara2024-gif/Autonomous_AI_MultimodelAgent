@@ -37,7 +37,15 @@ export interface AgentConfig {
   voiceHotkey: string;
   /** whisper.cpp model name: resolves to <userData>/voice/ggml-<voiceModel>.bin. */
   voiceModel: string;
+  /**
+   * Spoken language. "auto" = Whisper detects it and the transcript is sent as heard.
+   * "ta" = force Tamil and translate the transcript to English before it becomes the prompt.
+   */
+  voiceLanguage: VoiceLanguage;
 }
+
+export type VoiceLanguage = "auto" | "ta";
+const VOICE_LANGUAGES: readonly VoiceLanguage[] = ["auto", "ta"];
 
 // Stage 1 wrote this placeholder into config.json and every session row; no code ever called
 // it. Replaced once with the real agent model (prompts/stage-3-mcp-automation-agent.md).
@@ -61,6 +69,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   voiceEnabled: true,
   voiceHotkey: "CommandOrControl+Shift+Space",
   voiceModel: "large-v3-turbo-q5_0",
+  voiceLanguage: "auto",
 };
 
 function configPath(): string {
@@ -87,7 +96,9 @@ export function loadConfig(): AgentConfig {
     const parsed = JSON.parse(readFileSync(file, "utf-8")) as Partial<AgentConfig>;
     cached = { ...DEFAULT_CONFIG, ...parsed };
     const missingKey = (Object.keys(DEFAULT_CONFIG) as Array<keyof AgentConfig>).some((key) => !(key in parsed));
-    if (cached.defaultModel === LEGACY_PLACEHOLDER_MODEL || missingKey) {
+    const invalidLanguage = !VOICE_LANGUAGES.includes(cached.voiceLanguage);
+    if (invalidLanguage) cached.voiceLanguage = DEFAULT_CONFIG.voiceLanguage;
+    if (cached.defaultModel === LEGACY_PLACEHOLDER_MODEL || missingKey || invalidLanguage) {
       if (cached.defaultModel === LEGACY_PLACEHOLDER_MODEL) cached.defaultModel = DEFAULT_CONFIG.defaultModel;
       writeFileSync(file, JSON.stringify(cached, null, 2), "utf-8");
     }

@@ -25,6 +25,8 @@ export interface Message {
   role: MessageRole;
   content: string;
   createdAt: number;
+  /** Voice: the Tamil transcript, when `content` is its English translation. */
+  originalText?: string;
 }
 
 // Mirrors src/main/agent/trace.ts.

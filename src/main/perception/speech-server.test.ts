@@ -31,4 +31,21 @@ describe("speech server (real whisper-server.exe)", () => {
     },
     120_000,
   );
+
+  // Proves the per-request `language` form field is accepted by the real server (forcing "en"
+  // on English audio must still transcribe it; a rejected/ignored field would not).
+  test.skipIf(!available)(
+    "accepts a per-request language override",
+    async () => {
+      const server = new SpeechServer({ executable, modelPath: model });
+      try {
+        const wav = new Uint8Array(readFileSync(path.join(import.meta.dir, "fixtures", "jfk.wav")));
+        const text = await server.transcribe(wav, { language: "en" });
+        expect(text?.toLowerCase()).toContain("ask not");
+      } finally {
+        server.stop();
+      }
+    },
+    120_000,
+  );
 });
