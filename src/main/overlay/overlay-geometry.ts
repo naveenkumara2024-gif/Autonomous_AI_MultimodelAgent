@@ -95,3 +95,27 @@ export function pickDodgeBounds(point: Point, bounds: Rect, workArea: Rect, marg
   }
   return best;
 }
+
+export type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+/**
+ * New bounds for dragging `edge` by (dx, dy) from `start`, never smaller than `min` (nor larger
+ * than `max`). The edge opposite the one being dragged stays where it is.
+ */
+export function resizeBounds(start: Rect, edge: ResizeEdge, dx: number, dy: number, min: Size, max?: Size): Rect {
+  const right = start.x + start.width;
+  const bottom = start.y + start.height;
+  let width = start.width;
+  let height = start.height;
+  if (edge.includes("e")) width = start.width + dx;
+  if (edge.includes("w")) width = start.width - dx;
+  if (edge.includes("s")) height = start.height + dy;
+  if (edge.includes("n")) height = start.height - dy;
+
+  width = Math.min(Math.max(width, min.width), max?.width ?? Number.POSITIVE_INFINITY);
+  height = Math.min(Math.max(height, min.height), max?.height ?? Number.POSITIVE_INFINITY);
+
+  const x = edge.includes("w") ? right - width : start.x;
+  const y = edge.includes("n") ? bottom - height : start.y;
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}

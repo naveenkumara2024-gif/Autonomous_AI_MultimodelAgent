@@ -27,6 +27,13 @@ Add-Type -Name Win32 -Namespace McpDesktop -MemberDefinition '
 
 $AE = [System.Windows.Automation.AutomationElement]
 
+# The host app's own windows (main window, automation overlay) are never an automation target.
+# UI Automation against an Electron window walks its whole accessibility tree through its UI
+# thread, which is the same thread that serves the user's clicks on the approval overlay, and
+# AttachThreadInput to that thread would jam it. AGENT_HOST_PID is passed down from the app.
+$script:HostPid = 0
+if ($env:AGENT_HOST_PID -match '^\d+$') { $script:HostPid = [int]$env:AGENT_HOST_PID }
+
 function Describe-Element($el) {
   $rect = $el.Current.BoundingRectangle
   $isPassword = $false
@@ -47,6 +54,14 @@ function Describe-Element($el) {
 function Get-ForegroundRoot {
   $hwnd = [McpDesktop.Win32]::GetForegroundWindow()
   if ($hwnd -eq [IntPtr]::Zero) { return $null }
+  if ($script:HostPid -gt 0) {
+    Initialize-AppWin
+    if ([McpDesktop.AppWin]::OwnerPid($hwnd) -eq $script:HostPid) {
+      # One of our own windows is in front: search the app the user is actually automating.
+      $hwnd = [McpDesktop.AppWin]::FirstForeignWindow()
+      if ($hwnd -eq [IntPtr]::Zero) { return $null }
+    }
+  }
   return $AE::FromHandle($hwnd)
 }
 
@@ -59,6 +74,7 @@ function Find-TopLevelWindow([string]$title) {
   $topLevel = $AE::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
   foreach ($w in $topLevel) {
     try {
+      if ($script:HostPid -gt 0 -and $w.Current.ProcessId -eq $script:HostPid) { continue }
       $class = $w.Current.ClassName
       if ($classNeedle -and $class -eq $classNeedle) { return $w }
       if ($w.Current.Name -and $w.Current.Name.ToLower().Contains($needle)) { return $w }
@@ -71,7 +87,10 @@ function Find-TopLevelWindow([string]$title) {
 function Get-OpenWindowTitles {
   $titles = @()
   foreach ($w in $AE::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
-    try { if ($w.Current.Name) { $titles += $w.Current.Name } } catch {}
+    try {
+      if ($script:HostPid -gt 0 -and $w.Current.ProcessId -eq $script:HostPid) { continue }
+      if ($w.Current.Name) { $titles += $w.Current.Name }
+    } catch {}
     if ($titles.Count -ge 15) { break }
   }
   return ,$titles
@@ -199,6 +218,17 @@ namespace McpDesktop {
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder s, ref int n);
 
+    /** PID of the host app (Electron main); its windows are never automation targets. 0 = unknown. */
+    public static uint HostPid;
+
+    public static uint OwnerPid(IntPtr h) { uint pid; GetWindowThreadProcessId(h, out pid); return pid; }
+
+    /** The topmost-in-Z visible titled window that is NOT one of the host's own. */
+    public static IntPtr FirstForeignWindow() {
+      foreach (var h in AppCandidates()) { if (HostPid == 0 || OwnerPid(h) != HostPid) return h; }
+      return IntPtr.Zero;
+    }
+
     public static string Title(IntPtr h) { var sb = new StringBuilder(GetWindowTextLength(h) + 1); GetWindowText(h, sb, sb.Capacity); return sb.ToString(); }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetApplicationUserModelId(IntPtr process, ref uint len, StringBuilder id);
@@ -253,7 +283,11 @@ namespace McpDesktop {
       uint fgPid;
       uint fgThread = GetWindowThreadProcessId(fg, out fgPid);
       uint me = GetCurrentThreadId();
-      bool attached = fg != IntPtr.Zero && fgThread != me && AttachThreadInput(me, fgThread, true);
+      // Never share input state with one of the host's own windows: its UI thread also serves the
+      // user's clicks on the approval overlay, and attaching while blocked in SetForegroundWindow
+      // (a cold-starting Word, say) would jam it.
+      bool hostOwned = HostPid != 0 && fgPid == HostPid;
+      bool attached = fg != IntPtr.Zero && fgThread != me && !hostOwned && AttachThreadInput(me, fgThread, true);
       try { BringWindowToTop(h); SetForegroundWindow(h); }
       finally { if (attached) AttachThreadInput(me, fgThread, false); }
       return WaitForeground(h, 300);
@@ -274,6 +308,7 @@ namespace McpDesktop {
     public static List<IntPtr> AppCandidates() {
       var list = new List<IntPtr>();
       EnumWindows((h, l) => {
+        if (HostPid != 0 && OwnerPid(h) == HostPid) return true;
         if (IsWindowVisible(h) && GetWindow(h, 4) == IntPtr.Zero && GetWindowTextLength(h) > 0 && !IsCloaked(h)) list.Add(h);
         return true;
       }, IntPtr.Zero);
@@ -282,6 +317,7 @@ namespace McpDesktop {
   }
 }
 '@
+  [McpDesktop.AppWin]::HostPid = [uint32]$script:HostPid
   $script:AppWinLoaded = $true
 }
 

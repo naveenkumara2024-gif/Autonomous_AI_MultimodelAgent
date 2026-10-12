@@ -55,6 +55,8 @@ const api = {
   // Automation overlay (called from the overlay window; main ignores them from any other sender).
   getAutomationFocus: (): Promise<{ sessionId: string; turnId: string } | null> => ipcRenderer.invoke("automation.focus.get"),
   hideAutomationOverlay: (): Promise<boolean> => ipcRenderer.invoke("automation.hide"),
+  resizeAutomationOverlay: (msg: { phase: "start" | "move" | "end"; edge: string; dx: number; dy: number }): Promise<void> =>
+    ipcRenderer.invoke("automation.resize", msg),
   setAutomationCollapsed: (collapsed: boolean): Promise<void> => ipcRenderer.invoke("automation.setCollapsed", collapsed),
   openMainWindow: (): Promise<void> => ipcRenderer.invoke("automation.openMainWindow"),
 

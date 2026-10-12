@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, screen } from "electron";
 import type { OverlayPort } from "./automation-controller";
-import { type Point, pickDodgeBounds, type Rect, rectContains, restoreBounds } from "./overlay-geometry";
+import { type Point, pickDodgeBounds, type Rect, rectContains, type ResizeEdge, resizeBounds, restoreBounds } from "./overlay-geometry";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -11,7 +11,6 @@ const DEFAULT_SIZE = { width: 420, height: 540 };
 const MIN_SIZE = { width: 300, height: 160 };
 const COLLAPSED_HEIGHT = 44;
 const MARGIN = 16;
-const RAISE_INTERVAL_MS = 2000;
 const SAVE_DEBOUNCE_MS = 400;
 
 interface SavedState extends Rect {
@@ -27,13 +26,23 @@ interface SavedState extends Rect {
  * focusable (WS_EX_NOACTIVATE): the agent types real keystrokes into whatever app has focus,
  * so pressing Approve here must never move focus onto this window. It is also excluded from
  * screen capture, so the model never sees it and never picks it as a click target.
+ *
+ * It must also never be ACTIVATED by our own code. Electron's win.moveTop() is
+ * SetWindowPos(HWND_TOP) WITHOUT SWP_NOACTIVATE, so calling it (as an earlier version did on a
+ * 2 s timer and at every tool call) made the overlay the foreground window: the agent's
+ * keystrokes and UI Automation then targeted the overlay, and the Electron UI thread that
+ * serves the user's clicks was busy answering accessibility queries — the overlay would not move
+ * or respond to buttons while automation ran. Topmost windows stay above normal ones on their
+ * own, so the only z-order call here is setAlwaysOnTop at creation, before the first show.
  */
 export class AutomationOverlay implements OverlayPort {
   private window: BrowserWindow | null = null;
   private loaded = false;
   private collapsed = false;
   private expandedHeight = DEFAULT_SIZE.height;
-  private raiseTimer: ReturnType<typeof setInterval> | null = null;
+  /** Events sent before the page finished loading; replayed (in order) once it has. */
+  private pending: Array<[string, unknown]> = [];
+  private resizeStart: Rect | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly statePath: string) {}
@@ -87,18 +96,26 @@ export class AutomationOverlay implements OverlayPort {
     });
     win.setAlwaysOnTop(true, "screen-saver");
     win.setContentProtection(true);
+    // Should never happen (focusable: false); if anything ever does activate it, say so loudly
+    // instead of leaving the agent typing into the overlay.
+    win.on("focus", () => console.warn("[overlay] the automation overlay took keyboard focus — it must never be activated"));
 
     win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     win.webContents.on("will-navigate", (event) => event.preventDefault());
     win.webContents.on("did-finish-load", () => {
       this.loaded = true;
+      // Whatever arrived while the page was loading (an approval, a trace row) is replayed now;
+      // the renderer de-duplicates by id, so overlap with its own initial pull is harmless.
+      const queued = this.pending;
+      this.pending = [];
+      for (const [channel, payload] of queued) if (!win.isDestroyed()) win.webContents.send(channel, payload);
     });
     win.on("move", () => this.scheduleSave());
     win.on("resize", () => this.scheduleSave());
     win.on("closed", () => {
       this.window = null;
       this.loaded = false;
-      this.stopRaising();
+      this.pending = [];
     });
 
     const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -112,23 +129,22 @@ export class AutomationOverlay implements OverlayPort {
   }
 
   show(): void {
-    const win = this.ensureWindow();
-    win.showInactive();
-    this.raise();
-    this.startRaising();
+    // showInactive: shown, never activated. (No raise/moveTop here — see the class comment.)
+    this.ensureWindow().showInactive();
   }
 
   hide(): void {
-    this.stopRaising();
     if (this.window && !this.window.isDestroyed()) this.window.hide();
   }
 
-  /** Re-assert the top-most position without activating the window. */
+  /**
+   * Called on tool starts. Deliberately does not touch z-order unless "always on top" has
+   * actually been cleared, and never uses moveTop (which activates the window).
+   */
   raise(): void {
     const win = this.window;
     if (!win || win.isDestroyed() || !win.isVisible()) return;
-    win.setAlwaysOnTop(true, "screen-saver");
-    win.moveTop();
+    if (!win.isAlwaysOnTop()) win.setAlwaysOnTop(true, "screen-saver");
   }
 
   containsCursor(): boolean {
@@ -138,8 +154,15 @@ export class AutomationOverlay implements OverlayPort {
   }
 
   send(channel: string, payload: unknown): void {
-    // Before the page has loaded it pulls its state itself (automation.focus.get), so dropping is safe.
-    if (this.window && !this.window.isDestroyed() && this.loaded) this.window.webContents.send(channel, payload);
+    if (!this.window || this.window.isDestroyed()) return;
+    if (this.loaded) {
+      this.window.webContents.send(channel, payload);
+      return;
+    }
+    // The page is still loading: it pulls its initial state itself, but anything that happens
+    // between that pull and the load finishing would be lost, so hold it (bounded) and replay.
+    this.pending.push([channel, payload]);
+    if (this.pending.length > 500) this.pending.shift();
   }
 
   /** Header collapse button: shrink to the one-line strip, or restore the previous height. */
@@ -162,6 +185,23 @@ export class AutomationOverlay implements OverlayPort {
   }
 
   /**
+   * Edge/corner resize driven from the page. The window's native resize band sits OUTSIDE the
+   * painted edge (an invisible ~8 px border), so users pressing the visible edge hit the page
+   * instead; the page draws its own handles and reports drags here.
+   */
+  resizeBy(phase: "start" | "move" | "end", edge: ResizeEdge, dx: number, dy: number): void {
+    const win = this.window;
+    if (!win || win.isDestroyed() || this.collapsed) return;
+    if (phase === "end") {
+      this.resizeStart = null;
+      return;
+    }
+    if (phase === "start" || !this.resizeStart) this.resizeStart = win.getBounds();
+    const work = screen.getDisplayMatching(this.resizeStart).workArea;
+    win.setBounds(resizeBounds(this.resizeStart, edge, dx, dy, MIN_SIZE, { width: work.width, height: work.height }));
+  }
+
+  /**
    * The agent needs a point this window is covering (physical screen pixels from the MCP
    * server). Move to the farthest clear corner of that display. false = it wasn't covering the
    * point, or nowhere clears it.
@@ -180,20 +220,9 @@ export class AutomationOverlay implements OverlayPort {
   }
 
   destroy(): void {
-    this.stopRaising();
     if (this.saveTimer) clearTimeout(this.saveTimer);
     if (this.window && !this.window.isDestroyed()) this.window.destroy();
     this.window = null;
-  }
-
-  private startRaising(): void {
-    if (this.raiseTimer) return;
-    this.raiseTimer = setInterval(() => this.raise(), RAISE_INTERVAL_MS);
-  }
-
-  private stopRaising(): void {
-    if (this.raiseTimer) clearInterval(this.raiseTimer);
-    this.raiseTimer = null;
   }
 
   private scheduleSave(): void {

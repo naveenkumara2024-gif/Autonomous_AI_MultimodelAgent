@@ -51,6 +51,85 @@ function useNow(active: boolean): number {
   return now;
 }
 
+type Edge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+// Thin on the sides so they don't swallow the scrollbar; corners are larger targets.
+const HANDLES: Array<{ edge: Edge; className: string }> = [
+  { edge: "n", className: "left-3 right-3 top-0 h-1 cursor-ns-resize" },
+  { edge: "s", className: "bottom-0 left-3 right-3 h-1 cursor-ns-resize" },
+  { edge: "w", className: "bottom-3 left-0 top-3 w-1 cursor-ew-resize" },
+  { edge: "e", className: "bottom-3 right-0 top-3 w-1 cursor-ew-resize" },
+  { edge: "nw", className: "left-0 top-0 size-3 cursor-nwse-resize" },
+  { edge: "ne", className: "right-0 top-0 size-3 cursor-nesw-resize" },
+  { edge: "sw", className: "bottom-0 left-0 size-3 cursor-nesw-resize" },
+  { edge: "se", className: "bottom-0 right-0 size-4 cursor-nwse-resize" },
+];
+
+/**
+ * Edge and corner resize handles. Windows' own resize band for a frameless window lies OUTSIDE
+ * the painted edge, so pressing the visible edge reached the page and nothing resized. These
+ * handles sit on the visible edge and report the drag to main (screen-coordinate deltas, so
+ * they are unaffected by the window moving under the pointer while it is resized from the
+ * left/top). They also override the header's drag region along the top edge.
+ */
+function ResizeHandles() {
+  const drag = useRef<{ edge: Edge; startX: number; startY: number } | null>(null);
+  const pending = useRef<{ dx: number; dy: number } | null>(null);
+  const frame = useRef<number | null>(null);
+
+  const send = (phase: "start" | "move" | "end", edge: Edge, dx: number, dy: number) => {
+    void window.agentBridge.resizeAutomationOverlay({ phase, edge, dx, dy }).catch(() => {});
+  };
+
+  const flush = () => {
+    frame.current = null;
+    const d = drag.current;
+    const p = pending.current;
+    if (d && p) send("move", d.edge, p.dx, p.dy);
+  };
+
+  const finish = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    send("end", d.edge, 0, 0);
+  };
+
+  return (
+    <>
+      {HANDLES.map(({ edge, className }) => (
+        <div
+          key={edge}
+          style={NO_DRAG}
+          className={cn("absolute z-50 touch-none", className)}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            drag.current = { edge, startX: e.screenX, startY: e.screenY };
+            send("start", edge, 0, 0);
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current;
+            if (!d) return;
+            pending.current = { dx: e.screenX - d.startX, dy: e.screenY - d.startY };
+            if (frame.current === null) frame.current = requestAnimationFrame(flush);
+          }}
+          onPointerUp={finish}
+          onPointerCancel={finish}
+        />
+      ))}
+      {/* A visible grip so the window reads as resizable. */}
+      <svg className="pointer-events-none absolute bottom-0.5 right-0.5 z-40 size-3 text-muted-foreground/60" viewBox="0 0 12 12" aria-hidden>
+        <path d="M11 3 3 11M11 7 7 11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+      </svg>
+    </>
+  );
+}
+
 function replyFor(messages: Message[], turnId: string): string | null {
   const start = messages.findIndex((m) => m.id === turnId);
   if (start < 0) return null;
@@ -86,20 +165,41 @@ function NoteLine({ note }: { note: NoteRow }) {
 
 function ApprovalCard({ request, total, sessionTitle }: { request: ApprovalRequest; total: number; sessionTitle?: string }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const countdown = useCountdown(request.expiresAt);
-  useEffect(() => setBusy(false), [request.id]);
+  useEffect(() => {
+    setBusy(false);
+    setError(null);
+  }, [request.id]);
 
   const respond = async (approved: boolean) => {
     if (busy) return;
     setBusy(true);
-    await window.agentBridge.respondApproval(request.id, approved);
+    setError(null);
+    try {
+      await window.agentBridge.respondApproval(request.id, approved);
+    } catch (e) {
+      // A failed answer must never leave both buttons disabled for good.
+      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(e));
+      setBusy(false);
+      return;
+    }
+    // Main resolves the request and pushes "approval.resolved", which removes this card. If that
+    // ever doesn't happen (the card is stale), the buttons come back instead of staying dead.
+    window.setTimeout(() => setBusy(false), 4000);
   };
 
   const detail = primaryDetail(request);
   const categories = request.risk.categories.length ? request.risk.categories : request.risk.category ? [request.risk.category] : [];
 
   return (
-    <div className="mx-2 mb-2 shrink-0 rounded-lg border border-status-stopped/60 bg-card p-2.5 shadow-sm" role="alertdialog" aria-label="Approve this action?">
+    <div
+      className="mx-2 mb-2 flex max-h-[65%] min-h-0 shrink-0 flex-col rounded-lg border border-status-stopped/60 bg-card shadow-sm"
+      role="alertdialog"
+      aria-label="Approve this action?"
+    >
+      {/* The details scroll when the window is short; Deny / Approve below stay pinned in view. */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
       <div className="flex items-start gap-2">
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-status-stopped" />
         <div className="min-w-0 flex-1">
@@ -127,8 +227,10 @@ function ApprovalCard({ request, total, sessionTitle }: { request: ApprovalReque
       )}
       {request.risk.reasons.length > 0 && <div className="mt-1.5 text-[11px] text-muted-foreground">{request.risk.reasons.join("; ")}</div>}
       {detail && <pre className="mt-1.5 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-muted p-1.5 font-mono text-[10px] text-foreground select-text">{detail.value}</pre>}
+      {error && <div className="mt-1.5 text-[11px] text-destructive">Couldn&apos;t send your answer: {error}</div>}
+      </div>
 
-      <div className="mt-2 flex justify-end gap-2">
+      <div className="flex shrink-0 justify-end gap-2 border-t border-border px-2.5 py-2">
         <Button type="button" variant="secondary" size="sm" className="h-7" disabled={busy} onClick={() => void respond(false)}>
           Deny
         </Button>
@@ -207,6 +309,12 @@ export function AutomationOverlay() {
   const phase: Phase =
     approvals.length > 0 ? "approval" : running ? "working" : view.status === "done" ? "done" : view.status === "cancelled" ? "stopped" : view.status === "blocked" ? "blocked" : view.status ? "failed" : "idle";
 
+  // A collapsed strip has no Approve/Deny, so a pending approval expands it.
+  const needsApproval = approvals.length > 0;
+  useEffect(() => {
+    if (collapsed && needsApproval) void window.agentBridge.setAutomationCollapsed(false);
+  }, [collapsed, needsApproval]);
+
   const reply = !running && focus ? replyFor(messages, focus.turnId) : null;
   const title = focus ? sessions[focus.sessionId] : undefined;
   const elapsed = view.startTs ? formatMs((view.endTs ?? now) - view.startTs) : "";
@@ -240,7 +348,8 @@ export function AutomationOverlay() {
   const approval = approvals[0];
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden border border-border bg-background text-[12px] text-foreground select-none">
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden border border-border bg-background text-[12px] text-foreground select-none">
+      {!collapsed && <ResizeHandles />}
       <header className="flex h-11 shrink-0 items-center gap-2 px-3" style={DRAG}>
         <span className={cn("size-2 shrink-0 rounded-full", dot[phase])} />
         <div className="min-w-0 flex-1">
@@ -284,7 +393,7 @@ export function AutomationOverlay() {
         <>
           {approval && <ApprovalCard request={approval} total={approvals.length} sessionTitle={sessions[approval.sessionId] !== title ? sessions[approval.sessionId] : undefined} />}
 
-          <div ref={scrollRef} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto border-t border-border px-1.5 py-1.5">
+          <div ref={scrollRef} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto border-t border-border px-1.5 py-1.5 [scrollbar-width:thin]">
             {view.checklist.length > 1 && (
               <div className="mb-1 rounded border border-border">
                 <button type="button" onClick={() => setPlanOpen((v) => !v)} className="flex w-full items-center gap-2 px-2 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground">

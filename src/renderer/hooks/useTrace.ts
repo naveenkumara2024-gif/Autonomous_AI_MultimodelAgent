@@ -62,5 +62,16 @@ export function useApprovals(): ApprovalRequest[] {
     };
   }, []);
 
+  // Defence in depth: a window that was still loading (or hidden) can miss an "approval.resolved"
+  // push. While any card is showing, re-read the authoritative list so none can go stale.
+  const shown = requests.length > 0;
+  useEffect(() => {
+    if (!shown || !window.agentBridge) return;
+    const timer = setInterval(() => {
+      window.agentBridge.listApprovals().then(setRequests).catch(() => {});
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [shown]);
+
   return requests;
 }

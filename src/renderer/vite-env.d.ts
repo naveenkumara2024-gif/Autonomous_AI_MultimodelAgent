@@ -55,6 +55,7 @@ declare global {
       clearActionCache: () => Promise<void>;
       getAutomationFocus: () => Promise<{ sessionId: string; turnId: string } | null>;
       hideAutomationOverlay: () => Promise<boolean>;
+      resizeAutomationOverlay: (msg: { phase: "start" | "move" | "end"; edge: string; dx: number; dy: number }) => Promise<void>;
       setAutomationCollapsed: (collapsed: boolean) => Promise<void>;
       openMainWindow: () => Promise<void>;
       onSessionEvent: (channel: EventChannel, listener: (payload: unknown) => void) => () => void;

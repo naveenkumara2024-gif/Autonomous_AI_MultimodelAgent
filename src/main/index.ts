@@ -143,6 +143,16 @@ function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionM
 
   registerHandler("automation.focus.get", (e) => (isTrusted(e) ? automation.currentFocus() : null));
   registerHandler("automation.hide", (e) => (isOverlay(e) ? automation.userHide() : false));
+  registerHandler("automation.resize", (e, msg: { phase?: string; edge?: string; dx?: number; dy?: number }) => {
+    if (!isOverlay(e) || !msg) return;
+    const edges = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+    const phase = msg.phase === "start" || msg.phase === "move" || msg.phase === "end" ? msg.phase : null;
+    if (!phase || !edges.includes(String(msg.edge))) return;
+    const dx = Number(msg.dx);
+    const dy = Number(msg.dy);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    overlay.resizeBy(phase, msg.edge as "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw", dx, dy);
+  });
   registerHandler("automation.setCollapsed", (e, collapsed: boolean) => {
     if (isOverlay(e)) overlay.setCollapsed(collapsed === true);
   });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultBounds, pickDodgeBounds, rectContains, restoreBounds } from "./overlay-geometry";
+import { defaultBounds, pickDodgeBounds, rectContains, resizeBounds, restoreBounds } from "./overlay-geometry";
 
 const screen1 = { x: 0, y: 0, width: 1920, height: 1040 };
 const screen2 = { x: 1920, y: 0, width: 1280, height: 1024 };
@@ -75,5 +75,38 @@ describe("pickDodgeBounds", () => {
   test("returns null when no corner can clear the point", () => {
     const tiny = { x: 0, y: 0, width: 440, height: 560 };
     expect(pickDodgeBounds({ x: 220, y: 280 }, { x: 0, y: 0, width: 420, height: 540 }, tiny, 10)).toBeNull();
+  });
+});
+
+describe("resizeBounds", () => {
+  const start = { x: 1000, y: 100, width: 420, height: 540 };
+  const min = { width: 300, height: 160 };
+
+  test("dragging the bottom-right corner grows the window and keeps the top-left fixed", () => {
+    expect(resizeBounds(start, "se", 50, 30, min)).toEqual({ x: 1000, y: 100, width: 470, height: 570 });
+  });
+
+  test("dragging the left edge moves x and keeps the right edge fixed", () => {
+    const next = resizeBounds(start, "w", -80, 0, min);
+    expect(next).toEqual({ x: 920, y: 100, width: 500, height: 540 });
+    expect(next.x + next.width).toBe(start.x + start.width);
+  });
+
+  test("dragging the top edge moves y and keeps the bottom edge fixed", () => {
+    const next = resizeBounds(start, "n", 0, 60, min);
+    expect(next).toEqual({ x: 1000, y: 160, width: 420, height: 480 });
+    expect(next.y + next.height).toBe(start.y + start.height);
+  });
+
+  test("never shrinks below the minimum, and the fixed edge stays put", () => {
+    const next = resizeBounds(start, "nw", 900, 900, min);
+    expect(next.width).toBe(300);
+    expect(next.height).toBe(160);
+    expect(next.x + next.width).toBe(start.x + start.width);
+    expect(next.y + next.height).toBe(start.y + start.height);
+  });
+
+  test("respects a maximum size", () => {
+    expect(resizeBounds(start, "e", 5000, 0, min, { width: 800, height: 900 }).width).toBe(800);
   });
 });
