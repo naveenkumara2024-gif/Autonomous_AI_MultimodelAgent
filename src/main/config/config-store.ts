@@ -47,6 +47,13 @@ export interface AgentConfig {
    * defaultModel so a faster/cheaper non-reasoning model can be dropped in without touching the agent.
    */
   voiceTranslationModel: string;
+  /**
+   * Show the always-on-top automation overlay (live steps + approvals) while the agent acts.
+   * false = no overlay; approvals appear only in the main window, as before.
+   */
+  automationOverlayEnabled: boolean;
+  /** Minimize the main window when the overlay appears so it doesn't cover the app being automated. */
+  automationMinimizeMainWindow: boolean;
 }
 
 export type VoiceLanguage = "auto" | "ta";
@@ -76,6 +83,8 @@ const DEFAULT_CONFIG: AgentConfig = {
   voiceModel: "large-v3-turbo-q5_0",
   voiceLanguage: "auto",
   voiceTranslationModel: "agnes-3-flash",
+  automationOverlayEnabled: true,
+  automationMinimizeMainWindow: true,
 };
 
 function configPath(): string {

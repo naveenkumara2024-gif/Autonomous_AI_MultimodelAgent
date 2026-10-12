@@ -3,7 +3,8 @@ import type { TraceEvent } from "../main/agent/trace";
 import type { ApprovalRequest } from "../main/sandbox/approval-gate";
 import type { Message, Session } from "../main/session/session-store";
 
-type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session";
+
+type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session" | "automation.focus";
 
 const api = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke("app:getVersion"),
@@ -36,6 +37,12 @@ const api = {
   voiceCancel: (): Promise<void> => ipcRenderer.invoke("voice.cancel"),
   voiceSubmit: (wav: Uint8Array): Promise<void> => ipcRenderer.invoke("voice.submit", wav),
   voiceCaptureError: (reason: string): Promise<void> => ipcRenderer.invoke("voice.captureError", reason),
+
+  // Automation overlay (called from the overlay window; main ignores them from any other sender).
+  getAutomationFocus: (): Promise<{ sessionId: string; turnId: string } | null> => ipcRenderer.invoke("automation.focus.get"),
+  hideAutomationOverlay: (): Promise<boolean> => ipcRenderer.invoke("automation.hide"),
+  setAutomationCollapsed: (collapsed: boolean): Promise<void> => ipcRenderer.invoke("automation.setCollapsed", collapsed),
+  openMainWindow: (): Promise<void> => ipcRenderer.invoke("automation.openMainWindow"),
 
   onSessionEvent: (channel: EventChannel, listener: (payload: unknown) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload);

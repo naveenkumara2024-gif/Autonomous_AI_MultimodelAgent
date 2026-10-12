@@ -2,7 +2,7 @@
 
 import type { ApprovalRequest, Message, Session, TraceEvent } from "./types";
 
-type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session";
+type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session" | "automation.focus";
 
 // Mirrors the shape exposed by src/preload/index.ts. Not imported directly
 // from there — preload belongs to tsconfig.node.json's project, and this
@@ -32,6 +32,10 @@ declare global {
       voiceCancel: () => Promise<void>;
       voiceSubmit: (wav: Uint8Array) => Promise<void>;
       voiceCaptureError: (reason: string) => Promise<void>;
+      getAutomationFocus: () => Promise<{ sessionId: string; turnId: string } | null>;
+      hideAutomationOverlay: () => Promise<boolean>;
+      setAutomationCollapsed: (collapsed: boolean) => Promise<void>;
+      openMainWindow: () => Promise<void>;
       onSessionEvent: (channel: EventChannel, listener: (payload: unknown) => void) => () => void;
     };
   }

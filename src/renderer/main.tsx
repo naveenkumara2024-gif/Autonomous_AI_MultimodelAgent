@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { AutomationOverlay } from "./AutomationOverlay";
 import { OverlayWindow } from "./OverlayWindow";
 import "./index.css";
 
@@ -11,6 +12,6 @@ if (!rootEl) {
 
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    {window.location.hash === "#overlay" ? <OverlayWindow /> : <App />}
+    {window.location.hash === "#overlay" ? <OverlayWindow /> : window.location.hash === "#automation" ? <AutomationOverlay /> : <App />}
   </React.StrictMode>,
 );

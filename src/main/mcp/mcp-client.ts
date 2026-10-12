@@ -52,6 +52,9 @@ function serverEnv(dataDir: string): Record<string, string> {
     env[key] = value;
   }
   env.MCP_DATA_DIR = dataDir;
+  // The server refuses synthetic clicks aimed at this app's own windows (the approval buttons
+  // live there); every top-level window we create is owned by this process.
+  env.AGENT_HOST_PID = String(process.pid);
   return env;
 }
 

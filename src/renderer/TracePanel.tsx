@@ -9,7 +9,7 @@ import type { TraceEvent } from "./types";
 
 type RowStatus = "running" | "awaiting-approval" | "ok" | "error" | "denied" | "cancelled";
 
-interface ToolRow {
+export interface ToolRow {
   kind: "tool";
   id: string;
   tool: string;
@@ -27,7 +27,7 @@ interface ToolRow {
   withheld?: number;
 }
 
-interface NoteRow {
+export interface NoteRow {
   kind: "note";
   id: string;
   actor: string;
@@ -35,7 +35,7 @@ interface NoteRow {
   tone: "normal" | "error";
 }
 
-interface SubagentGroup {
+export interface SubagentGroup {
   kind: "group";
   id: string;
   actor: string;
@@ -46,13 +46,13 @@ interface SubagentGroup {
   items: Array<ToolRow | NoteRow>;
 }
 
-interface ChecklistItem {
+export interface ChecklistItem {
   id: string;
   text: string;
   status: "pending" | "done" | "failed" | "blocked";
 }
 
-interface TurnView {
+export interface TurnView {
   checklist: ChecklistItem[];
   timeline: Array<SubagentGroup | NoteRow | ToolRow>;
   llmCalls: number;
@@ -153,7 +153,7 @@ const STATUS_DOT: Record<RowStatus, string> = {
 const SUBAGENT_LABEL: Record<string, string> = { desktop: "Desktop", browser: "Browser", shell: "Shell", supervisor: "Supervisor" };
 const label = (actor: string) => SUBAGENT_LABEL[actor] ?? actor;
 
-function formatMs(ms?: number): string {
+export function formatMs(ms?: number): string {
   if (ms === undefined) return "";
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }

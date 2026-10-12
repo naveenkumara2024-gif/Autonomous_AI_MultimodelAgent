@@ -4,7 +4,7 @@ import { type FunctionTool, toFunctionTool } from "../mcp/tool-adapter";
 import { type ActionCache, buildRecipe, recipeKey } from "../memory/action-cache";
 import type { ApprovalGate } from "../sandbox/approval-gate";
 import type { ResourceLockManager } from "../sandbox/resource-lock-manager";
-import { ToolExecutor } from "../tools/tool-executor";
+import { type ExecutorDeps, ToolExecutor } from "../tools/tool-executor";
 import { registerBuiltInFastPaths, runFastPaths } from "./fast-paths";
 import type { FastPathContext } from "./fast-paths/registry";
 import { type ChatMessage, chat, parseToolArgs } from "./llm-client";
@@ -318,6 +318,9 @@ export interface AgentRunnerDeps {
   actionCache?: ActionCache;
   /** Read per turn so a config change applies without restarting sessions. */
   actionCacheEnabled?: () => boolean;
+  /** Overlay hooks, passed straight to each turn's ToolExecutor (see tools/tool-executor.ts). */
+  dodgeOverlay?: ExecutorDeps["dodgeOverlay"];
+  inputBlockedReason?: ExecutorDeps["inputBlockedReason"];
 }
 
 export interface TurnRequest {
@@ -420,7 +423,14 @@ export class AgentRunner {
     try {
       await this.deps.mcp.start();
       const executor = new ToolExecutor(
-        { mcp: this.deps.mcp, approvals: this.deps.approvals, locks: this.deps.locks, policy: this.deps.policy },
+        {
+          mcp: this.deps.mcp,
+          approvals: this.deps.approvals,
+          locks: this.deps.locks,
+          policy: this.deps.policy,
+          dodgeOverlay: this.deps.dodgeOverlay,
+          inputBlockedReason: this.deps.inputBlockedReason,
+        },
         { sessionId: this.sessionId, turnId: request.turnId, trace, signal: controller.signal },
       );
       const shortcut = { executor, trace, signal: controller.signal };

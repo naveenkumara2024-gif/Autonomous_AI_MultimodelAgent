@@ -14,6 +14,7 @@ import { fail, json, text } from "../core/result";
 import { invalidateCaptureCache } from "../win32/capture";
 import { COORDINATE_MODES, displayContaining, getDisplays, resolvePoint, type ResolvedPoint } from "../win32/displays";
 import { getUser32 } from "../win32/ffi";
+import { checkPointAgainstOwnWindows } from "../win32/own-windows";
 import {
   makeMouseInput,
   MOUSEEVENTF_HWHEEL,
@@ -88,6 +89,10 @@ export function registerMouseTools(defineTool: DefineTool): void {
 
       const heldVks = resolveModifiers(modifiers);
       if (!Array.isArray(heldVks)) return fail(heldVks.error);
+
+      // Never let synthetic input land on the app's own windows (they carry the Approve button).
+      const ownWindow = checkPointAgainstOwnWindows(point.x, point.y);
+      if (ownWindow) return fail(ownWindow);
 
       if (!user32.SetCursorPos(point.x, point.y)) return fail(`Failed to move cursor to (${point.x}, ${point.y}).`);
 
@@ -168,6 +173,9 @@ export function registerMouseTools(defineTool: DefineTool): void {
       if ("error" in from) return fail(from.error);
       const to = resolvePoint(coordinate_type, to_x, to_y, display_index, displays);
       if ("error" in to) return fail(to.error);
+
+      const ownWindow = checkPointAgainstOwnWindows(from.x, from.y) ?? checkPointAgainstOwnWindows(to.x, to.y);
+      if (ownWindow) return fail(ownWindow);
 
       if (!user32.SetCursorPos(from.x, from.y)) return fail(`Failed to move cursor to (${from.x}, ${from.y}).`);
       sendInputs(user32, [makeMouseInput(MOUSEEVENTF_LEFTDOWN)]);

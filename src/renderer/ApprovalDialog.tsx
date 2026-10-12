@@ -7,7 +7,7 @@ import type { ApprovalRequest } from "./types";
 // one of these buttons is pressed; closing, Esc, or letting it time out all count as Deny.
 // Deny is the focused default so the safe choice is always the easy one.
 
-const CATEGORY_LABEL: Record<string, string> = {
+export const CATEGORY_LABEL: Record<string, string> = {
   "file-delete": "Deletes data",
   "credential-entry": "Credentials",
   payment: "Payment",
@@ -15,9 +15,9 @@ const CATEGORY_LABEL: Record<string, string> = {
   "mass-modify": "System / bulk change",
 };
 
-const SUBAGENT_LABEL: Record<string, string> = { desktop: "Desktop", browser: "Browser", shell: "Shell" };
+export const SUBAGENT_LABEL: Record<string, string> = { desktop: "Desktop", browser: "Browser", shell: "Shell" };
 
-function primaryDetail(request: ApprovalRequest): { label: string; value: string } | null {
+export function primaryDetail(request: ApprovalRequest): { label: string; value: string } | null {
   const a = request.args;
   if (typeof a.command === "string") return { label: "Command", value: a.command };
   if (typeof a.expression === "string") return { label: "JavaScript", value: a.expression };
@@ -26,7 +26,7 @@ function primaryDetail(request: ApprovalRequest): { label: string; value: string
   return null;
 }
 
-function useCountdown(expiresAt: number): string {
+export function useCountdown(expiresAt: number): string {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);

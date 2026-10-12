@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, type IpcMainInvokeEvent, nativeTheme, shell } from "electron";
 import { TraceStore } from "./agent/trace";
 import { registerHandler } from "./client-event-utils";
 import { loadConfig } from "./config/config-store";
@@ -9,6 +9,8 @@ import { openDatabase } from "./db/database";
 import { McpClientManager } from "./mcp/mcp-client";
 import { ActionCache } from "./memory/action-cache";
 import { resolveMcpServerCommand } from "./mcp/server-command";
+import { AutomationController } from "./overlay/automation-controller";
+import { AutomationOverlay } from "./overlay/automation-overlay";
 import { loadRenderer } from "./nav-server";
 import { probeHotkey } from "./perception/global-hotkey";
 import { startVoice, voiceDir, type VoiceController } from "./perception/voice-controller";
@@ -37,15 +39,36 @@ if (!app.isPackaged && process.env.AGENT_DEBUG_CDP_PORT) {
 let mcp: McpClientManager | null = null;
 let approvals: ApprovalGate | null = null;
 let voice: VoiceController | null = null;
+let automationOverlay: AutomationOverlay | null = null;
+
+// What the automation overlay needs to hear: the same stream the main window gets, minus voice.
+const OVERLAY_CHANNELS = new Set(["trace.event", "approval.request", "approval.resolved", "session.status", "session.update", "session.message"]);
 
 registerHandler("app:getVersion", () => app.getVersion());
 
 function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionManager; config: ReturnType<typeof loadConfig>; send: (channel: string, payload: unknown) => void } {
   const db = openDatabase();
   const config = loadConfig();
+
+  // The always-on-top automation overlay (live steps + approvals). It watches the same event
+  // stream as the main window; nothing in the agent code knows it exists.
+  const overlay = new AutomationOverlay(path.join(app.getPath("userData"), "automation-overlay.json"));
+  automationOverlay = overlay;
+  const automation = new AutomationController({
+    overlay,
+    mainWindow: { isOnScreen: () => !win.isDestroyed() && win.isVisible() && !win.isMinimized(), minimize: () => win.minimize() },
+    enabled: () => config.automationOverlayEnabled,
+    minimizeMainWindow: () => config.automationMinimizeMainWindow,
+  });
   const send = (channel: string, payload: unknown) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload);
+    if (OVERLAY_CHANNELS.has(channel)) overlay.send(channel, payload);
+    automation.observe(channel, payload);
   };
+  // Only our own two UI windows may see or answer approvals (the voice overlay shares the
+  // preload bridge and must not be able to approve anything).
+  const isOverlay = (e: IpcMainInvokeEvent) => overlay.webContentsId !== null && e.sender.id === overlay.webContentsId;
+  const isTrusted = (e: IpcMainInvokeEvent) => e.sender.id === win.webContents.id || isOverlay(e);
 
   // One automation server, one approval table and one lock table for the whole app — they
   // guard the single real desktop that every session shares.
@@ -68,6 +91,11 @@ function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionM
     policy: () => ({ allowScreenshotsToModel: config.allowScreenshotsToModel }),
     actionCache,
     actionCacheEnabled: () => config.actionCacheEnabled,
+    dodgeOverlay: (point) => overlay.dodge(point),
+    inputBlockedReason: () =>
+      BrowserWindow.getFocusedWindow() && approvals!.list().length > 0
+        ? "Refused: an approval is waiting and the Autonomous AI window has keyboard focus, so a keystroke could answer it. Nothing was typed. It will work once the user answers the approval."
+        : null,
   });
 
   // Warm the automation server in the background so the first prompt doesn't pay its startup.
@@ -90,8 +118,22 @@ function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionM
 
   registerHandler("actionCache.clear", () => actionCache.clear());
   registerHandler("trace.image", (_e, imagePath: string) => traces.readImage(imagePath));
-  registerHandler("approval.list", () => approvals!.list());
-  registerHandler("approval.respond", (_e, id: string, approved: boolean) => approvals!.respond(id, approved === true));
+  registerHandler("approval.list", (e) => (isTrusted(e) ? approvals!.list() : []));
+  registerHandler("approval.respond", (e, id: string, approved: boolean) => {
+    if (isTrusted(e)) approvals!.respond(id, approved === true);
+  });
+
+  registerHandler("automation.focus.get", (e) => (isTrusted(e) ? automation.currentFocus() : null));
+  registerHandler("automation.hide", (e) => (isOverlay(e) ? automation.userHide() : false));
+  registerHandler("automation.setCollapsed", (e, collapsed: boolean) => {
+    if (isOverlay(e)) overlay.setCollapsed(collapsed === true);
+  });
+  registerHandler("automation.openMainWindow", (e) => {
+    if (!isOverlay(e) || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
 
   return { sessionManager, config, send };
 }
@@ -151,6 +193,7 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(async () => {
   const config = loadConfig();
+
   const extraChecks = config.voiceEnabled
     ? [
         { name: "voice-hotkey", ...probeHotkey(config.voiceHotkey) },
@@ -175,5 +218,6 @@ app.on("before-quit", () => {
   // Nothing flagged may run after the user can no longer see or answer its dialog.
   approvals?.denyAll();
   voice?.stop();
+  automationOverlay?.destroy();
   void mcp?.stop();
 });

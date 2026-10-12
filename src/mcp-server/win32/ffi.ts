@@ -20,6 +20,10 @@ const USER32_SYMBOLS = {
   SetClipboardData: { args: [FFIType.u32, FFIType.ptr], returns: FFIType.ptr },
   GetClipboardData: { args: [FFIType.u32], returns: FFIType.ptr },
   IsClipboardFormatAvailable: { args: [FFIType.u32], returns: FFIType.bool },
+  // POINT is passed by value; on x64 an 8-byte struct travels as one 64-bit register.
+  WindowFromPoint: { args: [FFIType.i64], returns: FFIType.ptr },
+  GetAncestor: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.ptr },
+  GetWindowThreadProcessId: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.u32 },
 } as const;
 
 const SHCORE_SYMBOLS = {

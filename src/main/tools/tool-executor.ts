@@ -24,6 +24,16 @@ export interface ExecutorDeps {
   approvals: ApprovalGate;
   locks: ResourceLockManager;
   policy: () => { allowScreenshotsToModel: boolean };
+  /**
+   * Moves the automation overlay off a screen point (physical pixels) it is covering. Resolves
+   * true when it moved. Absent = no overlay, so a refused click is simply reported.
+   */
+  dodgeOverlay?: (point: { x: number; y: number }) => boolean | Promise<boolean>;
+  /**
+   * Why synthetic keyboard input must not be sent right now (one of the app's own windows has
+   * focus while an approval is pending, so a stray Tab/Enter could answer it), or null.
+   */
+  inputBlockedReason?: () => string | null;
 }
 
 export interface TurnContext {
@@ -133,6 +143,15 @@ export function summarizeResult(text: string): string {
   return clip(JSON.stringify(v));
 }
 
+// Mirrors OWN_WINDOW_MARKER in src/mcp-server/win32/own-windows.ts (separate build project).
+const OWN_WINDOW_BLOCK = /\[blocked-by-own-window x=(-?\d+) y=(-?\d+)\]/;
+
+/** The point an MCP click/drag was refused at because the app's own window is there, if it was. */
+export function parseOwnWindowBlock(text: string): { x: number; y: number } | null {
+  const match = OWN_WINDOW_BLOCK.exec(text);
+  return match ? { x: Number(match[1]), y: Number(match[2]) } : null;
+}
+
 /** Keeps giant args (a pasted document, a long script) readable in the trace. */
 function truncateArgs(args: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -228,6 +247,13 @@ export class ToolExecutor {
 
     if (signal.aborted) return finish("cancelled", "Cancelled before running: the user stopped this turn.", {});
 
+    // 0. Keyboard input is refused outright while one of our own windows has focus and an
+    //    approval is waiting — a synthetic Tab/Enter could otherwise answer it.
+    if (tool === "key_press" || tool === "type_text") {
+      const blocked = this.deps.inputBlockedReason?.() ?? null;
+      if (blocked) return finish("error", blocked, { error: blocked });
+    }
+
     // 1. Classify — on literal args plus OS/DOM observations, never on intent or reasoning.
     const { context, notes } = await this.observeContext(tool, args);
     const risk = classify(tool, args, context);
@@ -275,7 +301,19 @@ export class ToolExecutor {
     // 4. Execute.
     let adapted;
     try {
-      adapted = adaptResult(await this.deps.mcp.callTool(tool, args, { signal, timeoutMs: timeoutFor(tool, args) }));
+      const call = () => this.deps.mcp.callTool(tool, args, { signal, timeoutMs: timeoutFor(tool, args) });
+      adapted = adaptResult(await call());
+
+      // The MCP server refuses synthetic clicks on the app's own windows. If the overlay is
+      // what is covering a legitimate target, move it away and retry — once, with the same
+      // (already approved) call. Anything else, or a second refusal, goes back to the model.
+      const covered = adapted.isError && (tool === "click" || tool === "drag") ? parseOwnWindowBlock(adapted.text) : null;
+      if (covered && this.deps.dodgeOverlay && (await this.deps.dodgeOverlay(covered))) {
+        console.log(`[overlay] moved out of the way of ${tool} at (${covered.x}, ${covered.y}); retrying once`);
+        adapted = adaptResult(await call());
+        adapted.text = `(The automation overlay was covering that point, so it moved aside and the action was retried.)
+${adapted.text}`;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (signal.aborted) return finish("cancelled", "Cancelled: the user stopped this turn.", {}, [], approval, risk.category);
