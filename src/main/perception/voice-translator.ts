@@ -1,3 +1,5 @@
+import { agentEndpoint } from "../settings/llm-endpoint";
+
 /**
  * Tamil -> English translation of a voice transcript (prompts/voice-tamil-to-english.md).
  *
@@ -58,12 +60,12 @@ export function sanitizeTranslation(raw: string): string | null {
 /** Returns the English text, or `null` on any failure (callers keep their own fallback). */
 export async function translateToEnglish(speech: string, deps: TranslateDeps): Promise<string | null> {
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const baseUrl = process.env.AGENT_BASE_URL;
-  const apiKey = process.env.AGENT_API_KEY;
-  if (!baseUrl || !apiKey) {
+  const endpoint = agentEndpoint();
+  if (!endpoint) {
     console.warn("[voice-translator] AGENT_BASE_URL/AGENT_API_KEY not set — cannot translate");
     return null;
   }
+  const { baseUrl, apiKey } = endpoint;
 
   try {
     const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {

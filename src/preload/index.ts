@@ -2,9 +2,13 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { TraceEvent } from "../main/agent/trace";
 import type { ApprovalRequest } from "../main/sandbox/approval-gate";
 import type { Message, Session } from "../main/session/session-store";
+import type { ModelsResult, TestResult } from "../main/settings/provider-client";
+import type { ProviderPublic, SaveProviderInput } from "../main/settings/provider-store";
+import type { GeneralSettings, ProbeInput, SettingsSnapshot } from "../main/settings/settings-service";
 
+type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
-type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session" | "automation.focus";
+type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session" | "automation.focus" | "settings.changed";
 
 const api = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke("app:getVersion"),
@@ -37,6 +41,16 @@ const api = {
   voiceCancel: (): Promise<void> => ipcRenderer.invoke("voice.cancel"),
   voiceSubmit: (wav: Uint8Array): Promise<void> => ipcRenderer.invoke("voice.submit", wav),
   voiceCaptureError: (reason: string): Promise<void> => ipcRenderer.invoke("voice.captureError", reason),
+
+  // Settings (main window only; main rejects any other sender). No call here ever returns a key.
+  getSettings: (): Promise<SettingsSnapshot | null> => ipcRenderer.invoke("settings.get"),
+  saveProvider: (input: SaveProviderInput): Promise<Result<ProviderPublic>> => ipcRenderer.invoke("settings.provider.save", input),
+  deleteProvider: (id: string): Promise<Result<null>> => ipcRenderer.invoke("settings.provider.delete", id),
+  setActiveProvider: (id: string): Promise<Result<null>> => ipcRenderer.invoke("settings.provider.setActive", id),
+  testProvider: (input: ProbeInput): Promise<Result<TestResult>> => ipcRenderer.invoke("settings.provider.test", input),
+  listProviderModels: (input: Omit<ProbeInput, "model">): Promise<Result<ModelsResult>> => ipcRenderer.invoke("settings.provider.models", input),
+  updateGeneralSettings: (patch: Partial<GeneralSettings>): Promise<Result<GeneralSettings>> => ipcRenderer.invoke("settings.general.update", patch),
+  clearActionCache: (): Promise<void> => ipcRenderer.invoke("actionCache.clear"),
 
   // Automation overlay (called from the overlay window; main ignores them from any other sender).
   getAutomationFocus: (): Promise<{ sessionId: string; turnId: string } | null> => ipcRenderer.invoke("automation.focus.get"),

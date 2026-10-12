@@ -1,9 +1,11 @@
 import type { FunctionTool } from "../mcp/tool-adapter";
+import { agentEndpoint, missingEndpointMessage } from "../settings/llm-endpoint";
 import type { TurnTrace } from "./trace";
 
 /**
- * Thin OpenAI-compatible chat-completions client for the agent (AGENT_* env vars —
- * deliberately separate from title-generator.ts's TITLE_GEN_* model, which stays isolated).
+ * Thin OpenAI-compatible chat-completions client for the agent. The endpoint is the active
+ * provider from Settings (settings/llm-endpoint.ts; AGENT_* env vars remain the fallback when no
+ * provider store exists), deliberately separate from title-generator.ts's own model.
  * Our own fetch rather than a LangChain chat model so every request can be traced exactly:
  * model, message/tool counts, tokens, latency, finish reason, retries. Bounded retries on
  * 429/5xx/network errors only; honors the turn's AbortSignal; never logs the API key.
@@ -60,10 +62,9 @@ export class LlmError extends Error {
 }
 
 function config(): { baseUrl: string; apiKey: string } {
-  const baseUrl = process.env.AGENT_BASE_URL;
-  const apiKey = process.env.AGENT_API_KEY;
-  if (!baseUrl || !apiKey) throw new LlmError("AGENT_BASE_URL / AGENT_API_KEY are not set (see .env.example).");
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
+  const endpoint = agentEndpoint();
+  if (!endpoint) throw new LlmError(missingEndpointMessage());
+  return endpoint;
 }
 
 function countImages(messages: ChatMessage[]): number {

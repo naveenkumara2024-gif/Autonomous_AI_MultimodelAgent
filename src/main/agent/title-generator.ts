@@ -1,12 +1,15 @@
+import { titleEndpoint } from "../settings/llm-endpoint";
+
 /**
  * AI-generated session titles (prompts/ai-title-generation.md).
  *
  * This is a standalone utility, not part of the LangGraph.js supervisor
  * (section 10) — it never reads a session's own `model` field and the
- * supervisor/subagents never call through here. TITLE_GEN_MODEL is fixed to
- * `nemotron-3-ultra-free` and is swapped only on explicit instruction (see
- * prompts/ai-title-generation.md decision 8) — never inferred or changed
- * opportunistically by this code.
+ * supervisor/subagents never call through here. The title model is chosen by
+ * the system, not by the user: settings/llm-endpoint.ts returns the active
+ * provider's system-chosen title model (e.g. `nemotron-3-ultra-free` on the
+ * Nara Router), falling back to TITLE_GEN_* in `.env` only when no provider
+ * key is configured (prompts/settings-providers.md decision 3).
  *
  * Failure is always non-fatal: a missing/invalid key, a network error, a
  * timeout, or a malformed response all resolve to `null` so the caller can
@@ -64,16 +67,14 @@ export async function generateTitle(
 ): Promise<string | null> {
   const fetchImpl = deps.fetchImpl ?? fetch;
 
-  const baseUrl = process.env.TITLE_GEN_BASE_URL;
-  const apiKey = process.env.TITLE_GEN_API_KEY;
-  const model = process.env.TITLE_GEN_MODEL;
-
-  if (!baseUrl || !apiKey || !model) {
+  const endpoint = titleEndpoint();
+  if (!endpoint) {
     console.warn(
       "[title-generator] TITLE_GEN_BASE_URL/TITLE_GEN_API_KEY/TITLE_GEN_MODEL not fully set — skipping AI title generation",
     );
     return null;
   }
+  const { baseUrl, apiKey, model } = endpoint;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

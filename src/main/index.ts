@@ -1,9 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, type IpcMainInvokeEvent, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, type IpcMainInvokeEvent, nativeTheme, safeStorage, shell } from "electron";
 import { TraceStore } from "./agent/trace";
 import { registerHandler } from "./client-event-utils";
-import { loadConfig } from "./config/config-store";
+import { loadConfig, saveConfig } from "./config/config-store";
 import { loadEnvFile } from "./config/load-env";
 import { openDatabase } from "./db/database";
 import { McpClientManager } from "./mcp/mcp-client";
@@ -19,6 +19,11 @@ import { runPreflight, voiceModelCheck } from "./preflight";
 import { ApprovalGate } from "./sandbox/approval-gate";
 import { resourceLocks } from "./sandbox/resource-lock-manager";
 import { SessionManager } from "./session/session-manager";
+import { installEndpointResolver } from "./settings/llm-endpoint";
+import { ProviderStore } from "./settings/provider-store";
+import { safeStorageCipher } from "./settings/safe-cipher";
+import { registerSettingsHandlers } from "./settings/settings-handlers";
+import { SettingsService } from "./settings/settings-service";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.join(__dirname, "../..");
@@ -40,6 +45,7 @@ let mcp: McpClientManager | null = null;
 let approvals: ApprovalGate | null = null;
 let voice: VoiceController | null = null;
 let automationOverlay: AutomationOverlay | null = null;
+let providers: ProviderStore | null = null;
 
 // What the automation overlay needs to hear: the same stream the main window gets, minus voice.
 const OVERLAY_CHANNELS = new Set(["trace.event", "approval.request", "approval.resolved", "session.status", "session.update", "session.message"]);
@@ -123,6 +129,18 @@ function registerSessionHandlers(win: BrowserWindow): { sessionManager: SessionM
     if (isTrusted(e)) approvals!.respond(id, approved === true);
   });
 
+  // Settings page (providers, automation toggles). Main window only.
+  const settings = new SettingsService({
+    store: providers!,
+    config,
+    saveConfig,
+    secureStorageAvailable: () => safeStorage.isEncryptionAvailable(),
+    onChange: (snapshot) => {
+      if (!win.isDestroyed()) win.webContents.send("settings.changed", snapshot);
+    },
+  });
+  registerSettingsHandlers(settings, (e) => e.sender.id === win.webContents.id);
+
   registerHandler("automation.focus.get", (e) => (isTrusted(e) ? automation.currentFocus() : null));
   registerHandler("automation.hide", (e) => (isOverlay(e) ? automation.userHide() : false));
   registerHandler("automation.setCollapsed", (e, collapsed: boolean) => {
@@ -194,6 +212,23 @@ async function createWindow(): Promise<void> {
 app.whenReady().then(async () => {
   const config = loadConfig();
 
+  // Model providers (Settings). Created before preflight so the agent-endpoint check reports the
+  // provider actually in use, and before any model call is possible. On the very first run this
+  // imports AGENT_BASE_URL / AGENT_API_KEY from .env once.
+  providers = new ProviderStore({
+    filePath: path.join(app.getPath("userData"), "providers.json"),
+    cipher: safeStorageCipher,
+    importModel: config.defaultModel,
+    log: (line) => console.log(`[providers] ${line}`),
+  });
+  installEndpointResolver({
+    active: () => providers?.resolveActive() ?? null,
+    describeMissing: () => {
+      const name = providers?.list().find((p) => p.active)?.name ?? "the selected provider";
+      return `No API key is saved for ${name}. Open Settings (the gear in the top bar) and add one.`;
+    },
+  });
+
   const extraChecks = config.voiceEnabled
     ? [
         { name: "voice-hotkey", ...probeHotkey(config.voiceHotkey) },
@@ -202,7 +237,12 @@ app.whenReady().then(async () => {
           : { name: "voice-model", passed: false, detail: `invalid voiceModel "${config.voiceModel}"` },
       ]
     : [];
-  const preflight = await runPreflight({ mcpServer, extraChecks });
+  const activeProvider = providers.list().find((p) => p.active);
+  const preflight = await runPreflight({
+    mcpServer,
+    extraChecks,
+    agent: activeProvider ? { name: activeProvider.name, baseUrl: activeProvider.baseUrl, hasKey: activeProvider.hasKey } : undefined,
+  });
   for (const check of preflight.checks) {
     console.log(`[preflight] ${check.passed ? "ok  " : "FAIL"} ${check.name} — ${check.detail}`);
   }

@@ -1,8 +1,21 @@
 /// <reference types="vite/client" />
 
-import type { ApprovalRequest, Message, Session, TraceEvent } from "./types";
+import type {
+  ApprovalRequest,
+  GeneralSettings,
+  Message,
+  ProviderModelsResult,
+  ProviderProbeInput,
+  ProviderPublic,
+  ProviderSaveInput,
+  ProviderTestResult,
+  Result,
+  Session,
+  SettingsSnapshot,
+  TraceEvent,
+} from "./types";
 
-type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session" | "automation.focus";
+type EventChannel = "session.update" | "session.status" | "session.message" | "trace.event" | "approval.request" | "approval.resolved" | "voice.state" | "voice.capture" | "voice.focus-session" | "automation.focus" | "settings.changed";
 
 // Mirrors the shape exposed by src/preload/index.ts. Not imported directly
 // from there — preload belongs to tsconfig.node.json's project, and this
@@ -32,6 +45,14 @@ declare global {
       voiceCancel: () => Promise<void>;
       voiceSubmit: (wav: Uint8Array) => Promise<void>;
       voiceCaptureError: (reason: string) => Promise<void>;
+      getSettings: () => Promise<SettingsSnapshot | null>;
+      saveProvider: (input: ProviderSaveInput) => Promise<Result<ProviderPublic>>;
+      deleteProvider: (id: string) => Promise<Result<null>>;
+      setActiveProvider: (id: string) => Promise<Result<null>>;
+      testProvider: (input: ProviderProbeInput) => Promise<Result<ProviderTestResult>>;
+      listProviderModels: (input: Omit<ProviderProbeInput, "model">) => Promise<Result<ProviderModelsResult>>;
+      updateGeneralSettings: (patch: Partial<GeneralSettings>) => Promise<Result<GeneralSettings>>;
+      clearActionCache: () => Promise<void>;
       getAutomationFocus: () => Promise<{ sessionId: string; turnId: string } | null>;
       hideAutomationOverlay: () => Promise<boolean>;
       setAutomationCollapsed: (collapsed: boolean) => Promise<void>;

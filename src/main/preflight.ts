@@ -57,14 +57,32 @@ function chromeCheck(): PreflightCheck {
  * Failures are logged, not fatal: the app still opens, and the affected feature reports its
  * own clear error when used.
  */
-export async function runPreflight(options: { mcpServer: McpServerCommand; extraChecks?: PreflightCheck[] }): Promise<PreflightResult> {
+export interface AgentProviderFacts {
+  name: string;
+  baseUrl: string;
+  hasKey: boolean;
+}
+
+/** The model-endpoint check: the provider chosen in Settings, or the .env vars when there is none. */
+export function agentProviderCheck(agent: AgentProviderFacts | undefined, env: NodeJS.ProcessEnv = process.env): PreflightCheck {
+  if (agent) {
+    return {
+      name: "agent-api-key",
+      passed: agent.hasKey,
+      detail: agent.hasKey ? `${agent.name} (${agent.baseUrl})` : `${agent.name} has no API key — open Settings and add one`,
+    };
+  }
+  return {
+    name: "agent-api-key",
+    passed: Boolean(env.AGENT_BASE_URL && env.AGENT_API_KEY),
+    detail: env.AGENT_API_KEY ? `endpoint ${env.AGENT_BASE_URL ?? "(AGENT_BASE_URL missing)"}` : "AGENT_API_KEY / AGENT_BASE_URL not set in .env",
+  };
+}
+
+export async function runPreflight(options: { mcpServer: McpServerCommand; extraChecks?: PreflightCheck[]; agent?: AgentProviderFacts }): Promise<PreflightResult> {
   const checks: PreflightCheck[] = [
     mcpServerCheck(options.mcpServer),
-    {
-      name: "agent-api-key",
-      passed: Boolean(process.env.AGENT_BASE_URL && process.env.AGENT_API_KEY),
-      detail: process.env.AGENT_API_KEY ? `endpoint ${process.env.AGENT_BASE_URL ?? "(AGENT_BASE_URL missing)"}` : "AGENT_API_KEY / AGENT_BASE_URL not set in .env",
-    },
+    agentProviderCheck(options.agent),
     chromeCheck(),
     ...(options.extraChecks ?? []),
   ];

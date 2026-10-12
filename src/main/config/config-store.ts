@@ -64,7 +64,7 @@ const VOICE_LANGUAGES: readonly VoiceLanguage[] = ["auto", "ta"];
 export const LEGACY_PLACEHOLDER_MODEL = "claude-sonnet-5";
 
 const DEFAULT_CONFIG: AgentConfig = {
-  defaultModel: "agnes-3-flash",
+  defaultModel: "agnes-2.5-flash",
   defaultPermissionHooks: {
     requireApprovalFor: ["file-delete", "credential-entry", "payment", "network-egress", "mass-modify"],
   },

@@ -131,6 +131,11 @@ export class SessionStore {
     this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
   }
 
+  /** Keeps a session's stored model truthful when the active provider's model changes. */
+  setModel(id: string, model: string): void {
+    this.db.prepare(`UPDATE sessions SET model = ? WHERE id = ?`).run(model, id);
+  }
+
   /** One-time model migration (e.g. Stage 1's unused placeholder → the real agent model). */
   replaceModel(from: string, to: string): number {
     return Number(this.db.prepare(`UPDATE sessions SET model = ? WHERE model = ?`).run(to, from).changes);

@@ -9,6 +9,7 @@ import { OverlayWindow } from "./overlay-window";
 import { SpeechServer } from "./speech-server";
 import { downloadFile, fileExists, isValidModelName, modelPath, modelUrl } from "./voice-assets";
 import { resolveWhisperServerPath } from "./voice-server-command";
+import { translationModel } from "../settings/llm-endpoint";
 import { translateToEnglish } from "./voice-translator";
 
 export interface VoiceControllerDeps {
@@ -131,7 +132,7 @@ export function startVoice(deps: VoiceControllerDeps): VoiceController {
     translate: translating
       ? async (text) => {
           const startedAt = Date.now();
-          const english = await translateToEnglish(text, { model: config.voiceTranslationModel });
+          const english = await translateToEnglish(text, { model: translationModel(config.voiceTranslationModel) });
           log(`translated ${text.length} chars in ${Date.now() - startedAt}ms${english === null ? " (failed)" : ""}`);
           return english;
         }

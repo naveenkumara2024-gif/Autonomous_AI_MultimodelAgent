@@ -3,6 +3,7 @@ import { AgentRunner, type AgentRunnerDeps } from "../agent/agent-runner";
 import { generateTitle, TITLE_MAX_LENGTH } from "../agent/title-generator";
 import type { TraceEvent } from "../agent/trace";
 import { type AgentConfig, LEGACY_PLACEHOLDER_MODEL } from "../config/config-store";
+import { activeAgentModel } from "../settings/llm-endpoint";
 import type { Message, Session, SessionStatus } from "./session-store";
 import { SessionStore } from "./session-store";
 
@@ -102,11 +103,16 @@ export class SessionManager {
 
   private async runTurn(sessionId: string, message: Message, history: Array<{ role: "user" | "assistant"; content: string }>, session: Session): Promise<void> {
     const runner = this.runners.get(sessionId)!;
+    // The model is whatever the active provider is set to NOW (Settings), not the snapshot taken
+    // when the session was created — otherwise changing it would never reach existing sessions.
+    // The row is kept in step so the stored value stays truthful (AGENTS.md section 7).
+    const model = activeAgentModel() ?? session.model;
+    if (model !== session.model) this.store.setModel(sessionId, model);
     const outcome = await runner.run({
       turnId: message.id,
       userText: message.content,
       history,
-      model: session.model,
+      model,
       retryPolicy: session.retryPolicy,
     });
 

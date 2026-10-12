@@ -75,3 +75,67 @@ export interface ApprovalRequest {
   requestedAt: number;
   expiresAt: number;
 }
+
+// Mirrors src/main/settings/{provider-store,settings-service,provider-client}.ts. The renderer
+// never receives an API key — only `hasKey` and the last four characters.
+export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+
+export interface ProviderPublic {
+  id: string;
+  kind: "preset" | "custom";
+  name: string;
+  baseUrl: string;
+  model: string;
+  /** The system-chosen session-title model for this provider (not user-editable). */
+  titleModel: string;
+  hasKey: boolean;
+  keyHint: string | null;
+  active: boolean;
+  keyUrl: string | null;
+  blurb: string | null;
+}
+
+export interface GeneralSettings {
+  automationOverlayEnabled: boolean;
+  automationMinimizeMainWindow: boolean;
+  allowScreenshotsToModel: boolean;
+  actionCacheEnabled: boolean;
+  voiceLanguage: "auto" | "ta";
+}
+
+export interface SettingsSnapshot {
+  providers: ProviderPublic[];
+  activeId: string;
+  active: { id: string; name: string; model: string } | null;
+  general: GeneralSettings;
+  secureStorage: boolean;
+}
+
+export interface ProviderSaveInput {
+  id?: string;
+  name?: string;
+  baseUrl: string;
+  model: string;
+  /** undefined = keep the saved key, null = remove it, string = replace it. */
+  apiKey?: string | null;
+}
+
+export interface ProviderProbeInput {
+  id?: string;
+  baseUrl: string;
+  apiKey?: string;
+  model?: string;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  message: string;
+  ms: number;
+  status?: number;
+}
+
+export interface ProviderModelsResult {
+  ok: boolean;
+  models: string[];
+  message?: string;
+}

@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } fro
 import ReactMarkdown from "react-markdown";
 import { ApprovalDialog } from "./ApprovalDialog";
 import { SessionList } from "./SessionList";
+import { SettingsPage } from "./SettingsPage";
 import { TracePanel } from "./TracePanel";
 import { AeroShards } from "./components/backgrounds/AeroShards";
 import { SideRays } from "./components/backgrounds/SideRays";
@@ -15,6 +16,7 @@ import { useTheme } from "./hooks/useTheme";
 import { HERO_BACKGROUND_IMAGE } from "./lib/hero-background";
 import type { Message, Session, TraceEvent } from "./types";
 import { useSessionMessageEvent, useSessionStatusEvent, useSessionUpdateEvent } from "./hooks/useIPC";
+import { useSettings } from "./hooks/useSettings";
 import { useApprovals, useTrace } from "./hooks/useTrace";
 
 export default function App() {
@@ -32,11 +34,23 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [landingDraft, setLandingDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [view, setView] = useState<"chat" | "settings">("chat");
+  const settings = useSettings();
   const trace = useTrace(selectedId);
   const approvals = useApprovals();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasBridge = typeof window.agentBridge !== "undefined";
+
+  // Esc leaves Settings — unless an approval dialog is up, which owns Escape (it means Deny).
+  useEffect(() => {
+    if (view !== "settings" || approvals.length > 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setView("chat");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, approvals.length]);
 
   useEffect(() => {
     if (!hasBridge) return;
@@ -120,6 +134,7 @@ export default function App() {
     // empty "New session" rows in the sidebar.
     setSelectedId(null);
     setLandingDraft("");
+    setView("chat");
   }, []);
 
   const handleSend = useCallback(async () => {
@@ -199,9 +214,15 @@ export default function App() {
       <SessionList
         sessions={sessions}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={(id) => {
+          setSelectedId(id);
+          setView("chat");
+        }}
         onCreate={handleCreate}
-        onHome={() => setSelectedId(null)}
+        onHome={() => {
+          setSelectedId(null);
+          setView("chat");
+        }}
         onRename={handleRename}
         onDelete={handleDeleteSession}
         collapsed={sidebarCollapsed}
@@ -221,7 +242,7 @@ export default function App() {
             behind it. Only shown on the idle/landing page, and unmounted
             entirely (not just hidden) outside dark mode/that page, since
             both are live GPU contexts. */}
-        {theme === "dark" && !selectedSession && (
+        {theme === "dark" && !selectedSession && view === "chat" && (
           <div className="pointer-events-none absolute inset-0 z-0">
             {backgroundEffect === "rays" ? (
               <SideRays rayColor1="#D7FF3A" rayColor2="#4A9EFF" intensity={1.6} spread={2.2} opacity={0.55} />
@@ -235,14 +256,19 @@ export default function App() {
           // Blank until a real, content-derived title exists (see
           // session-manager.ts's updateTitle) — "New session" is the
           // pre-title placeholder, not something to surface here.
-          title={selectedSession && selectedSession.title !== "New session" ? selectedSession.title : null}
+          title={view === "settings" ? null : selectedSession && selectedSession.title !== "New session" ? selectedSession.title : null}
           theme={theme}
           onToggleTheme={toggleTheme}
           backgroundEffect={backgroundEffect}
           onToggleBackgroundEffect={toggleBackgroundEffect}
+          activeModel={settings?.active ? { providerName: settings.active.name, model: settings.active.model } : null}
+          settingsOpen={view === "settings"}
+          onOpenSettings={() => setView((v) => (v === "settings" ? "chat" : "settings"))}
         />
 
-        {selectedSession ? (
+        {view === "settings" ? (
+          <SettingsPage settings={settings} onBack={() => setView("chat")} />
+        ) : selectedSession ? (
           <>
             {/* Session title intentionally not shown as a header here — once
                 AI title generation lands (see prompts/stage-1-session-core.md

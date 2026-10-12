@@ -1,5 +1,6 @@
-import { Moon, Sparkles, Sun, UserRound, Zap } from "lucide-react";
+import { Moon, Settings, Sparkles, Sun, UserRound, Zap } from "lucide-react";
 import type { BackgroundEffect } from "../hooks/useBackgroundEffect";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
@@ -9,6 +10,10 @@ interface TopBarProps {
   onToggleTheme: () => void;
   backgroundEffect: BackgroundEffect;
   onToggleBackgroundEffect: () => void;
+  /** The provider + model the agent will use now; null when nothing usable is configured yet. */
+  activeModel: { providerName: string; model: string } | null;
+  settingsOpen: boolean;
+  onOpenSettings: () => void;
 }
 
 export function TopBar({
@@ -17,6 +22,9 @@ export function TopBar({
   onToggleTheme,
   backgroundEffect,
   onToggleBackgroundEffect,
+  activeModel,
+  settingsOpen,
+  onOpenSettings,
 }: TopBarProps) {
   // Reference design's small elevated square: visible bg/border/shadow at
   // rest (not just on hover, unlike Button's plain "ghost" variant), soft
@@ -44,6 +52,24 @@ export function TopBar({
 
       <TooltipProvider delayDuration={300}>
         <div className="flex items-center gap-2">
+          {/* The model in use, never a mystery. Opens Settings. */}
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            title={activeModel ? `${activeModel.model} via ${activeModel.providerName}` : "No model provider is set up — open Settings"}
+            className="flex h-9 max-w-[260px] items-center gap-2 rounded-[10px] border border-elevated-border bg-elevated px-3 text-[12px] transition-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          >
+            <span className={cn("size-1.5 shrink-0 rounded-full", activeModel ? "bg-status-idle" : "bg-status-stopped")} />
+            {activeModel ? (
+              <span className="truncate">
+                <span className="font-mono text-foreground">{activeModel.model}</span>
+                <span className="ml-1.5 text-muted-foreground">{activeModel.providerName}</span>
+              </span>
+            ) : (
+              <span className="truncate text-muted-foreground">Set up a provider</span>
+            )}
+          </button>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -81,6 +107,23 @@ export function TopBar({
               <TooltipContent>{backgroundEffect === "rays" ? "Aero Shards" : "Side Rays"}</TooltipContent>
             </Tooltip>
           )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(iconButtonClass, settingsOpen && "border-foreground/40")}
+                onClick={onOpenSettings}
+                aria-label="Settings"
+                aria-pressed={settingsOpen}
+              >
+                <Settings />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
